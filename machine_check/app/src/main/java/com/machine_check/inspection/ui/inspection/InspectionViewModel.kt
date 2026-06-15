@@ -140,8 +140,8 @@ class InspectionViewModel : ViewModel() {
                 "numeric" -> {
                     val numValue = item.numericValue.toDoubleOrNull()
                     numValue != null &&
-                            numValue >= (template.normalMin ?: Double.MIN_VALUE) &&
-                            numValue <= (template.normalMax ?: Double.MAX_VALUE)
+                            (template.normalMin == null || numValue >= template.normalMin) &&
+                            (template.normalMax == null || numValue <= template.normalMax)
                 }
                 else -> true
             }
