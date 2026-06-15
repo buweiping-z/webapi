@@ -84,6 +84,7 @@ namespace webapi.Controllers
 
             // 同一周期已有记录时先删除旧记录（异常重检场景），级联删除旧结果
             var existingRecord = await _context.InspectionRecords
+                .AsTracking()
                 .FirstOrDefaultAsync(r => r.DeviceModel == request.DeviceModel
                     && r.Frequency == frequency
                     && r.PeriodKey == periodKey);
@@ -208,6 +209,7 @@ namespace webapi.Controllers
 
                     // 查找是否已有记录
                     var existingRecord = await _context.InspectionRecords
+                        .AsTracking()
                         .FirstOrDefaultAsync(r => r.DeviceModel == request.DeviceModel
                             && r.Frequency == frequency
                             && r.PeriodKey == periodKey);
@@ -216,6 +218,7 @@ namespace webapi.Controllers
                     {
                         // 更新已有记录
                         var existingResult = await _context.InspectionResults
+                            .AsTracking()
                             .FirstOrDefaultAsync(res => res.RecordId == existingRecord.Id && res.ItemName == item.ItemName);
 
                         if (existingResult != null)
@@ -312,6 +315,7 @@ namespace webapi.Controllers
             try
             {
                 var existing = await _context.InspectionSignatures
+                    .AsTracking()
                     .FirstOrDefaultAsync(s => s.DeviceModel == request.DeviceModel
                         && s.Year == request.Year
                         && s.Month == request.Month);
@@ -387,6 +391,7 @@ namespace webapi.Controllers
             try
             {
                 var existing = await _context.InspectionSignatures
+                    .AsTracking()
                     .FirstOrDefaultAsync(s => s.DeviceModel == request.DeviceModel
                         && s.Year == request.Year
                         && s.Month == request.Month);
@@ -479,6 +484,7 @@ namespace webapi.Controllers
         public async Task<IActionResult> DeleteOperator(string employeeId)
         {
             var operator_ = await _context.QualifiedInspectors
+                .AsTracking()
                 .FirstOrDefaultAsync(o => o.EmployeeId == employeeId);
 
             if (operator_ == null)

@@ -110,6 +110,9 @@ namespace webapi.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DeviceModel", "InspectionTime")
+                        .HasDatabaseName("idx_records_device_time");
+
                     b.HasIndex("DeviceModel", "Frequency", "PeriodKey")
                         .IsUnique()
                         .HasDatabaseName("idx_records_period");
@@ -130,7 +133,7 @@ namespace webapi.Migrations
 
                     b.Property<string>("ItemName")
                         .IsRequired()
-                        .HasColumnType("longtext")
+                        .HasColumnType("varchar(255)")
                         .HasColumnName("item_name");
 
                     b.Property<int>("RecordId")
@@ -149,7 +152,9 @@ namespace webapi.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RecordId");
+                    b.HasIndex("RecordId", "ItemName")
+                        .IsUnique()
+                        .HasDatabaseName("uq_results_record_item");
 
                     b.ToTable("inspection_results", (string)null);
                 });
@@ -175,7 +180,7 @@ namespace webapi.Migrations
 
                     b.Property<string>("DeviceModel")
                         .IsRequired()
-                        .HasColumnType("longtext")
+                        .HasColumnType("varchar(255)")
                         .HasColumnName("device_model");
 
                     b.Property<int>("Month")
@@ -195,6 +200,9 @@ namespace webapi.Migrations
                         .HasColumnName("year");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DeviceModel", "Year", "Month")
+                        .HasDatabaseName("idx_signatures_device_period");
 
                     b.ToTable("inspection_signatures");
                 });

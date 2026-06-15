@@ -1,0 +1,5 @@
+[2026-06-13T13:13:59.330Z] [log] [API] http://localhost:5039
+[2026-06-13T13:14:01.787Z] [error] X
+[2026-06-13T13:14:01.787Z] [error] Failed to load resource: net::ERR_CONNECTION_REFUSED
+[2026-06-13T13:14:01.940Z] [error] X
+[2026-06-13T13:14:01.940Z] [error] Failed to load resource: net::ERR_CONNECTION_REFUSED

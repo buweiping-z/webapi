@@ -7,6 +7,7 @@
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
+            ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
         }
 
         public DbSet<InspectionRecord> InspectionRecords { get; set; }
@@ -36,6 +37,8 @@
                 entity.HasIndex(r => new { r.DeviceModel, r.Frequency, r.PeriodKey })
                     .IsUnique()
                     .HasDatabaseName("idx_records_period");
+                entity.HasIndex(r => new { r.DeviceModel, r.InspectionTime })
+                    .HasDatabaseName("idx_records_device_time");
             });
 
             modelBuilder.Entity<InspectionTemplate>(entity =>
@@ -50,15 +53,17 @@
                     .HasDefaultValue(true);
             });
 
-            modelBuilder.Entity<InspectionResult>()
-                .ToTable("inspection_results");
-
-            // 配置外键关系
-            modelBuilder.Entity<InspectionResult>()
-                .HasOne(r => r.InspectionRecord)
-                .WithMany()
-                .HasForeignKey(r => r.RecordId)
-                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<InspectionResult>(entity =>
+            {
+                entity.ToTable("inspection_results");
+                entity.HasOne(r => r.InspectionRecord)
+                    .WithMany()
+                    .HasForeignKey(r => r.RecordId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(r => new { r.RecordId, r.ItemName })
+                    .IsUnique()
+                    .HasDatabaseName("uq_results_record_item");
+            });
 
             modelBuilder.Entity<InspectionUser>(entity =>
             {
@@ -94,6 +99,12 @@
                 entity.Property(e => e.DeviceLocation).HasColumnName("device_location").HasMaxLength(200);
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
                 entity.HasIndex(e => e.DeviceModel).IsUnique().HasDatabaseName("idx_devices_device_model");
+            });
+
+            modelBuilder.Entity<InspectionSignature>(entity =>
+            {
+                entity.HasIndex(s => new { s.DeviceModel, s.Year, s.Month })
+                    .HasDatabaseName("idx_signatures_device_period");
             });
         }
     }
