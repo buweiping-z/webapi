@@ -7,6 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 // 固定监听地址（生产环境无 launchSettings.json 时默认 5000，这里统一为 5039）
 builder.WebHost.UseUrls("http://0.0.0.0:5039");
 
+// 静态文件根目录设为 html（而非默认的 wwwroot）
+builder.WebHost.UseWebRoot(Path.Combine(builder.Environment.ContentRootPath, "html"));
+
 // 1. 配置 CORS 策略 (放在 AddDbContext 之前或之后都可以)
 builder.Services.AddCors(options =>
 {
@@ -42,15 +45,8 @@ using (var scope = app.Services.CreateScope())
 app.UseCors("AllowAll");
 
 // 6. 静态文件服务 — 从 html/ 目录提供前端页面
-app.UseDefaultFiles(new DefaultFilesOptions
-{
-    DefaultFileNames = { "index.html" }
-});
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
-        Path.Combine(app.Environment.ContentRootPath, "html"))
-});
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // 7. 配置管道
 if (app.Environment.IsDevelopment())
