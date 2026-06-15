@@ -1,0 +1,207 @@
+[
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "GetDevices",
+    "RelativePath": "api/Inspection/devices",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "GetMonthlyRecords",
+    "RelativePath": "api/Inspection/records/monthly",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "deviceModel",
+        "Type": "System.String",
+        "IsRequired": false
+      },
+      {
+        "Name": "year",
+        "Type": "System.Int32",
+        "IsRequired": false
+      },
+      {
+        "Name": "month",
+        "Type": "System.Int32",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "SaveDailyRecord",
+    "RelativePath": "api/Inspection/records/save",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "webapi.Controllers.SaveDailyRecordRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "AutoSign",
+    "RelativePath": "api/Inspection/signatures/auto-sign",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "webapi.Controllers.AutoSignRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "GetSignatures",
+    "RelativePath": "api/Inspection/signatures/get",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "deviceModel",
+        "Type": "System.String",
+        "IsRequired": false
+      },
+      {
+        "Name": "year",
+        "Type": "System.Int32",
+        "IsRequired": false
+      },
+      {
+        "Name": "month",
+        "Type": "System.Int32",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "SaveSignatures",
+    "RelativePath": "api/Inspection/signatures/save",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "webapi.Controllers.SaveSignaturesRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "SubmitInspection",
+    "RelativePath": "api/Inspection/submit",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "webapi.Controllers.InspectionRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "SubmitFullInspection",
+    "RelativePath": "api/Inspection/submit-full",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "webapi.Controllers.FullInspectionRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "GetTemplates",
+    "RelativePath": "api/Inspection/templates/{deviceModel}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "deviceModel",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "GetUserList",
+    "RelativePath": "api/Inspection/users/list",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.InspectionController",
+    "Method": "Login",
+    "RelativePath": "api/Inspection/users/login",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "webapi.Controllers.LoginRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "webapi.Controllers.WeatherForecastController",
+    "Method": "Get",
+    "RelativePath": "WeatherForecast",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": [
+      {
+        "Type": "System.Collections.Generic.IEnumerable\u00601[[webapi.WeatherForecast, webapi, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]",
+        "MediaTypes": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "StatusCode": 200
+      }
+    ],
+    "EndpointName": "GetWeatherForecast"
+  }
+]
