@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
@@ -103,6 +104,9 @@ fun QrCodeScanner(
         return
     }
 
+    var barcodeScannerRef by remember { mutableStateOf<BarcodeScanner?>(null) }
+    var analysisExecutorRef by remember { mutableStateOf<java.util.concurrent.ExecutorService?>(null) }
+
     // 相机预览 + 条码分析
     Box(modifier = modifier.fillMaxSize()) {
         AndroidView(
@@ -121,12 +125,14 @@ fun QrCodeScanner(
 
                     // 图像分析用例（条码扫描）
                     val imageAnalysis = ImageAnalysis.Builder()
-                        .setTargetResolution(Size(1280, 720))
+                        .setTargetResolution(Size(640, 480))
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
 
                     val barcodeScanner = BarcodeScanning.getClient()
                     val analysisExecutor = Executors.newSingleThreadExecutor()
+                    barcodeScannerRef = barcodeScanner
+                    analysisExecutorRef = analysisExecutor
 
                     imageAnalysis.setAnalyzer(analysisExecutor) { imageProxy: ImageProxy ->
                         if (!isActive) {
@@ -188,6 +194,8 @@ fun QrCodeScanner(
     DisposableEffect(Unit) {
         onDispose {
             lastScannedCode = null
+            analysisExecutorRef?.shutdown()
+            barcodeScannerRef?.close()
         }
     }
 }
