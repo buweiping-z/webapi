@@ -258,7 +258,11 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 onFailure = {
                     _uiState.update {
-                        it.copy(isLoadingUninspectedMonthly = false)
+                        it.copy(
+                            isLoadingUninspectedMonthly = false,
+                            uninspectedMonthlyList = emptyList(),
+                            uninspectedMonthlyCount = 0
+                        )
                     }
                 }
             )

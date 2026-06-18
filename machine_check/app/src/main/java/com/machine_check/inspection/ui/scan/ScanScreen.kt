@@ -246,6 +246,7 @@ fun ScanScreen(
                                     checked = uiState.showUninspectedMonthly,
                                     onCheckedChange = { viewModel.toggleUninspectedMonthly() },
                                     enabled = uiState.employeeValidated
+                                        && uiState.uninspectedMonthlyCount > 0
                                 )
                                 Text(
                                     text = "当月未检",
@@ -255,13 +256,14 @@ fun ScanScreen(
                                     else
                                         MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (uiState.uninspectedMonthlyCount > 0) {
-                                    Text(
-                                        text = "(${uiState.uninspectedMonthlyCount})",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
+                                Text(
+                                    text = "(${uiState.uninspectedMonthlyCount})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (uiState.uninspectedMonthlyCount > 0)
+                                        MaterialTheme.colorScheme.error
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
