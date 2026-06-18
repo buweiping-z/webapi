@@ -4,6 +4,8 @@ import com.machine_check.inspection.data.models.FrequenciesAvailableResponse
 import com.machine_check.inspection.data.models.FullInspectionRequest
 import com.machine_check.inspection.data.models.InspectionTemplate
 import com.machine_check.inspection.data.models.SubmitResponse
+import com.machine_check.inspection.data.models.UninspectedMandatoryResponse
+import com.machine_check.inspection.data.models.UninspectedMonthlyResponse
 import com.machine_check.inspection.data.models.ValidateResponse
 import retrofit2.Response
 import retrofit2.http.Body
@@ -41,4 +43,15 @@ interface ApiService {
     suspend fun getFrequenciesAvailable(
         @Query("deviceModel") deviceModel: String
     ): Response<FrequenciesAvailableResponse>
+
+    /** 获取未点检的必须点检设备 location 列表 */
+    @GET("/api/Inspection/uninspected-mandatory-locations")
+    suspend fun getUninspectedMandatoryLocations(): Response<UninspectedMandatoryResponse>
+
+    /** 获取当月完全未点检的设备清单（所有频率均无记录） */
+    @GET("/api/Inspection/uninspected-monthly")
+    suspend fun getUninspectedMonthly(
+        @Query("year") year: Int,
+        @Query("month") month: Int
+    ): Response<UninspectedMonthlyResponse>
 }

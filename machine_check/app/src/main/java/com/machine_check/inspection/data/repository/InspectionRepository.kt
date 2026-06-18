@@ -4,6 +4,8 @@ import com.machine_check.inspection.data.models.FrequenciesAvailableResponse
 import com.machine_check.inspection.data.models.FullInspectionRequest
 import com.machine_check.inspection.data.models.InspectionTemplate
 import com.machine_check.inspection.data.models.SubmitResponse
+import com.machine_check.inspection.data.models.UninspectedMandatoryResponse
+import com.machine_check.inspection.data.models.UninspectedMonthlyResponse
 import com.machine_check.inspection.data.network.ApiService
 import com.machine_check.inspection.data.network.RetrofitClient
 
@@ -59,7 +61,7 @@ class InspectionRepository(
             if (cached != null) {
                 Result.success(cached.data)
             } else {
-                Result.failure(Exception("网络连接失败，请检查网络设置", e))
+                Result.failure(Exception("网络连接失败: ${e.message ?: e.toString()}"))
             }
         }
     }
@@ -81,7 +83,8 @@ class InspectionRepository(
                 )
             }
         } catch (e: Exception) {
-            Result.failure(Exception("网络连接失败，请检查网络设置", e))
+            val detail = e.message ?: e.toString()
+            Result.failure(Exception("网络连接失败: $detail"))
         }
     }
 
@@ -105,7 +108,26 @@ class InspectionRepository(
                 )
             }
         } catch (e: Exception) {
-            Result.failure(Exception("网络连接失败，请检查网络设置", e))
+            Result.failure(Exception("网络连接失败: ${e.message ?: e.toString()}"))
+        }
+    }
+
+    /** 获取未点检的必须点检设备 location 列表 */
+    suspend fun getUninspectedMandatoryLocations(): Result<UninspectedMandatoryResponse> {
+        return try {
+            val response = api.getUninspectedMandatoryLocations()
+            if (response.isSuccessful) {
+                val body = response.body()
+                if (body != null) {
+                    Result.success(body)
+                } else {
+                    Result.failure(Exception("获取未点检列表失败: 服务端返回了空响应体"))
+                }
+            } else {
+                Result.failure(Exception("获取未点检列表失败: ${response.code()} ${response.message()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("网络连接失败: ${e.message ?: e.toString()}"))
         }
     }
 
@@ -124,7 +146,26 @@ class InspectionRepository(
                 Result.failure(Exception("获取频率状态失败: ${response.code()} ${response.message()}"))
             }
         } catch (e: Exception) {
-            Result.failure(Exception("网络连接失败，请检查网络设置", e))
+            Result.failure(Exception("网络连接失败: ${e.message ?: e.toString()}"))
+        }
+    }
+
+    /** 获取当月完全未点检的设备清单 */
+    suspend fun getUninspectedMonthly(year: Int, month: Int): Result<UninspectedMonthlyResponse> {
+        return try {
+            val response = api.getUninspectedMonthly(year, month)
+            if (response.isSuccessful) {
+                val body = response.body()
+                if (body != null) {
+                    Result.success(body)
+                } else {
+                    Result.failure(Exception("获取未点检清单失败: 服务端返回了空响应体"))
+                }
+            } else {
+                Result.failure(Exception("获取未点检清单失败: ${response.code()} ${response.message()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("网络连接失败: ${e.message ?: e.toString()}"))
         }
     }
 }
