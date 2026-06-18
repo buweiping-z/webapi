@@ -325,8 +325,9 @@ fun ScanScreen(
                             } else {
                                 uiState.uninspectedMonthlyList.forEach { device ->
                                     val location = device.deviceLocation.ifEmpty { "未配置位置" }
+                                    val name = device.deviceName.ifEmpty { device.deviceModel }
                                     Text(
-                                        text = "📍 $location — ${device.deviceModel}",
+                                        text = "📍 $location — $name",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.padding(vertical = 2.dp)
