@@ -228,10 +228,42 @@ fun ScanScreen(
                     )
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "步骤 3: 点检频率",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "步骤 3: 点检频率",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            // 当月未点检 checkbox — 工号验证通过后才可用
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(end = 0.dp)
+                            ) {
+                                Checkbox(
+                                    checked = uiState.showUninspectedMonthly,
+                                    onCheckedChange = { viewModel.toggleUninspectedMonthly() },
+                                    enabled = uiState.employeeValidated
+                                )
+                                Text(
+                                    text = "当月未检",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (uiState.uninspectedMonthlyCount > 0)
+                                        MaterialTheme.colorScheme.error
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (uiState.uninspectedMonthlyCount > 0) {
+                                    Text(
+                                        text = "(${uiState.uninspectedMonthlyCount})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
 
                         val freqInfo = uiState.frequenciesAvailable
@@ -269,6 +301,36 @@ fun ScanScreen(
                                 enabled = monthlyAvailable,
                                 modifier = Modifier.weight(1f)
                             )
+                        }
+
+                        // 展开的当月未点检设备 location 列表
+                        if (uiState.showUninspectedMonthly) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider()
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            if (uiState.isLoadingUninspectedMonthly) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+
+                            if (uiState.uninspectedMonthlyList.isEmpty() && !uiState.isLoadingUninspectedMonthly) {
+                                Text(
+                                    text = "✅ 当月所有设备均已点检",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                uiState.uninspectedMonthlyList.forEach { device ->
+                                    val location = device.deviceLocation.ifEmpty { "未配置位置" }
+                                    Text(
+                                        text = "📍 $location — ${device.deviceModel}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
