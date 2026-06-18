@@ -44,12 +44,12 @@ fun ScanScreen(
         }
     }
 
-    // 从点检页返回时重新检查频率可用性
+    // 从点检页返回时重新检查频率可用性 + 刷新未点检列表
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshFrequencies()
+                viewModel.refreshAfterInspection()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -276,6 +276,102 @@ fun ScanScreen(
                 // 检查中进度条
                 if (uiState.isCheckingFrequencies) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+
+                // ---- 未点检 / 异常点检设备列表 ----
+                if (uiState.employeeValidated) {
+                    val hasIssues = uiState.uninspectedList.isNotEmpty() || uiState.abnormalList.isNotEmpty()
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (hasIssues)
+                                MaterialTheme.colorScheme.errorContainer
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⚠ 设备点检状态",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                if (uiState.isLoadingUninspected) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // ---- 未点检（必须点检）----
+                            Text(
+                                text = "未点检（必须点检）：",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                            if (uiState.uninspectedList.isEmpty()) {
+                                Text(
+                                    text = "  ✓ 全部完成",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.6f)
+                                )
+                            } else {
+                                uiState.uninspectedList.forEach { item ->
+                                    Text(
+                                        text = "  [${item.frequency}] ${item.location}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.padding(vertical = 1.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // ---- 异常点检（必须+选择）----
+                            Text(
+                                text = "异常点检（全部设备）：",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                            if (uiState.abnormalList.isEmpty()) {
+                                Text(
+                                    text = "  ✓ 无异常",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.6f)
+                                )
+                            } else {
+                                uiState.abnormalList.forEach { item ->
+                                    Text(
+                                        text = "  [${item.frequency}] ${item.location}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.padding(vertical = 1.dp)
+                                    )
+                                }
+                            }
+
+                            // 全部正常时显示
+                            if (!hasIssues && !uiState.isLoadingUninspected) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "✓ 当前所有设备点检正常",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))

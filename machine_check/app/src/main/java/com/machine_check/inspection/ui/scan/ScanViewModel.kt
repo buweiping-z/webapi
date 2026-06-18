@@ -3,6 +3,8 @@ package com.machine_check.inspection.ui.scan
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.machine_check.inspection.data.models.UninspectedDeviceItem
+import com.machine_check.inspection.data.models.UninspectedMonthlyDevice
 import com.machine_check.inspection.data.repository.InspectionRepository
 import com.machine_check.inspection.utils.PreferencesManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,7 +32,16 @@ data class ScanUiState(
     // 工号验证状态
     val isValidatingEmployee: Boolean = false,
     val employeeValidated: Boolean = false,
-    val validationError: String? = null
+    val validationError: String? = null,
+    // 未点检必须设备列表 + 异常设备列表
+    val uninspectedList: List<UninspectedDeviceItem> = emptyList(),
+    val abnormalList: List<UninspectedDeviceItem> = emptyList(),
+    val isLoadingUninspected: Boolean = false,
+    // 当月完全未点检设备清单（checkbox 勾选后显示）
+    val showUninspectedMonthly: Boolean = false,
+    val uninspectedMonthlyList: List<UninspectedMonthlyDevice> = emptyList(),
+    val isLoadingUninspectedMonthly: Boolean = false,
+    val uninspectedMonthlyCount: Int = 0
 )
 
 /**
@@ -184,6 +195,76 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 加载未点检必须设备列表（工号验证通过后 + 点检提交返回后调用） */
+    fun loadUninspectedList() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingUninspected = true) }
+            repository.getUninspectedMandatoryLocations().fold(
+                onSuccess = { result ->
+                    _uiState.update {
+                        it.copy(
+                            isLoadingUninspected = false,
+                            uninspectedList = result.uninspectedList,
+                            abnormalList = result.abnormalList
+                        )
+                    }
+                },
+                onFailure = {
+                    _uiState.update {
+                        it.copy(isLoadingUninspected = false)
+                    }
+                }
+            )
+        }
+    }
+
+    /** 切换「当月未点检」checkbox 并加载数据 */
+    fun toggleUninspectedMonthly() {
+        val current = _uiState.value.showUninspectedMonthly
+        if (!current) {
+            // 首次展开时加载数据
+            loadUninspectedMonthlyData()
+        }
+        _uiState.update { it.copy(showUninspectedMonthly = !current) }
+    }
+
+    /** 从点检页返回时刷新数据 */
+    fun refreshAfterInspection() {
+        refreshFrequencies()
+        loadUninspectedList()
+        // 如果当月未点检列表已展开，刷新
+        if (_uiState.value.showUninspectedMonthly) {
+            loadUninspectedMonthlyData()
+        }
+    }
+
+    /** 从后端加载当月完全未点检的设备清单 */
+    private fun loadUninspectedMonthlyData() {
+        val now = java.util.Calendar.getInstance()
+        val year = now.get(java.util.Calendar.YEAR)
+        val month = now.get(java.util.Calendar.MONTH) + 1
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingUninspectedMonthly = true) }
+            repository.getUninspectedMonthly(year, month).fold(
+                onSuccess = { result ->
+                    _uiState.update {
+                        it.copy(
+                            isLoadingUninspectedMonthly = false,
+                            uninspectedMonthlyList = result.uninspectedDevices,
+                            uninspectedMonthlyCount = result.uninspectedCount
+                        )
+                    }
+                },
+                onFailure = {
+                    _uiState.update {
+                        it.copy(isLoadingUninspectedMonthly = false)
+                    }
+                }
+            )
+        }
+    }
+
     // ===== 私有方法 =====
 
     /** 验证工号是否为点检资格人员 */
@@ -200,6 +281,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             validationError = if (valid) null else "该工号无点检资格"
                         )
                     }
+                    // 工号验证通过后自动加载未点检设备列表
+                    if (valid) loadUninspectedList()
                 },
                 onFailure = { e ->
                     _uiState.update {
