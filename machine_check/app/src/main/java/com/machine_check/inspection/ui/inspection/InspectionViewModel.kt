@@ -20,7 +20,9 @@ data class InspectionItemState(
     val selectedNormal: Boolean? = null,    // normal_abnormal 类型: true=正常, false=异常, null=未选
     val numericValue: String = "",          // numeric 类型: 用户输入的数值文本
     val remark: String = "",                // 备注
-    val isValid: Boolean = true             // 校验状态 (提交时检查)
+    val isValid: Boolean = true,            // 校验状态 (提交时检查)
+    val remarkRequired: Boolean = false,    // 异常时备注变为必填
+    val isOutOfRange: Boolean = false       // numeric 超范围标记
 )
 
 /**
@@ -94,7 +96,8 @@ class InspectionViewModel : ViewModel() {
         val updatedItems = state.items.toMutableList()
         updatedItems[itemIndex] = updatedItems[itemIndex].copy(
             selectedNormal = isNormal,
-            isValid = true  // 清除之前的错误标记
+            isValid = true,
+            remarkRequired = !isNormal
         )
         _uiState.update { (it as InspectionUiState.Form).copy(items = updatedItems) }
     }
@@ -102,10 +105,17 @@ class InspectionViewModel : ViewModel() {
     /** 更新 numeric 数值 */
     fun onNumericValueChanged(itemIndex: Int, value: String) {
         val state = _uiState.value as? InspectionUiState.Form ?: return
+        val numValue = value.toDoubleOrNull()
+        val template = state.items[itemIndex].template
+        // 检测是否超范围
+        val outOfRange = numValue != null &&
+            ((template.normalMin != null && numValue < template.normalMin) ||
+             (template.normalMax != null && numValue > template.normalMax))
         val updatedItems = state.items.toMutableList()
         updatedItems[itemIndex] = updatedItems[itemIndex].copy(
             numericValue = value,
-            isValid = true  // 清除之前的错误标记
+            isValid = true,
+            isOutOfRange = outOfRange
         )
         _uiState.update { (it as InspectionUiState.Form).copy(items = updatedItems) }
     }
@@ -136,16 +146,25 @@ class InspectionViewModel : ViewModel() {
         val validatedItems = state.items.mapIndexed { index, item ->
             val template = item.template
             val isValid = when (template.itemType) {
-                "normal_abnormal" -> item.selectedNormal != null
+                "normal_abnormal" -> {
+                    val selected = item.selectedNormal != null
+                    // 如果选择了异常，备注必填
+                    if (selected && item.selectedNormal == false && item.remark.isBlank()) {
+                        false
+                    } else {
+                        selected
+                    }
+                }
                 "numeric" -> {
-                    val numValue = item.numericValue.toDoubleOrNull()
-                    numValue != null &&
-                            (template.normalMin == null || numValue >= template.normalMin) &&
-                            (template.normalMax == null || numValue <= template.normalMax)
+                    // numeric: 必须填写有效数字（不论是否超范围）
+                    item.numericValue.toDoubleOrNull() != null
                 }
                 else -> true
             }
-            item.copy(isValid = isValid)
+            item.copy(
+                isValid = isValid,
+                remarkRequired = item.selectedNormal == false
+            )
         }
 
         val hasErrors = validatedItems.any { !it.isValid }
@@ -153,7 +172,7 @@ class InspectionViewModel : ViewModel() {
             _uiState.update {
                 (it as InspectionUiState.Form).copy(
                     items = validatedItems,
-                    errorMessage = "请完善标红的点检项后再提交"
+                    errorMessage = "异常项必须填写备注，或数值格式不正确"
                 )
             }
             return
@@ -164,11 +183,23 @@ class InspectionViewModel : ViewModel() {
             val template = item.template
             val (resultValue, isNormal) = when (template.itemType) {
                 "normal_abnormal" -> {
-                    val normal = item.selectedNormal ?: false
+                    val normal = item.selectedNormal ?: true
                     (if (normal) "正常" else "异常") to normal
                 }
                 "numeric" -> {
-                    item.numericValue to true
+                    // 超范围数值：resultValue = 数值，isNormal = false
+                    val numOk = item.numericValue.toDoubleOrNull() != null
+                    if (numOk) {
+                        val numVal = item.numericValue.toDouble()
+                        val inRange = when {
+                            template.normalMin != null && template.normalMax != null ->
+                                numVal >= template.normalMin && numVal <= template.normalMax
+                            else -> true
+                        }
+                        item.numericValue to inRange
+                    } else {
+                        item.numericValue to true
+                    }
                 }
                 else -> "" to true
             }
