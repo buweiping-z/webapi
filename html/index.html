@@ -1893,11 +1893,12 @@
                     header.innerHTML = `⚠️ 当月未点检设备（共 ${data.uninspectedCount} 台）`;
 
                     let html = '<div style="overflow-x:auto;"><table class="uninspected-table">';
-                    html += '<thead><tr><th style="min-width:120px;">设备名称</th><th style="min-width:200px;">所在位置</th></tr></thead>';
+                    html += '<thead><tr><th style="min-width:120px;">设备型号</th><th style="min-width:200px;">所在位置</th></tr></thead>';
                     html += '<tbody>';
                     data.uninspectedDevices.forEach(d => {
                         const loc = d.deviceLocation || '未配置位置';
-                        html += `<tr><td>${d.deviceModel}</td><td>${loc}</td></tr>`;
+                        const name = d.deviceName || d.deviceModel;
+                        html += `<tr><td>${name}</td><td>${loc}</td></tr>`;
                     });
                     html += '</tbody></table></div>';
                     content.innerHTML = html;
