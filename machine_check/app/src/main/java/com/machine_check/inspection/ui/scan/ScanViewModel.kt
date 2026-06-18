@@ -232,10 +232,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshAfterInspection() {
         refreshFrequencies()
         loadUninspectedList()
-        // 如果当月未点检列表已展开，刷新
-        if (_uiState.value.showUninspectedMonthly) {
-            loadUninspectedMonthlyData()
-        }
+        // 始终刷新当月未点检计数（checkbox 标签需要显示最新数量）
+        loadUninspectedMonthlyData()
     }
 
     /** 从后端加载当月完全未点检的设备清单 */
@@ -285,8 +283,11 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             validationError = if (valid) null else "该工号无点检资格"
                         )
                     }
-                    // 工号验证通过后自动加载未点检设备列表
-                    if (valid) loadUninspectedList()
+                    // 工号验证通过后自动加载未点检设备列表 + 当月未点检计数
+                    if (valid) {
+                        loadUninspectedList()
+                        loadUninspectedMonthlyData()
+                    }
                 },
                 onFailure = { e ->
                     _uiState.update {
