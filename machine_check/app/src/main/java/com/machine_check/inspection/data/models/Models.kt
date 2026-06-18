@@ -70,3 +70,39 @@ data class FrequenciesAvailableResponse(
     val monthly: FrequencyStatus
 )
 
+/**
+ * 单条未点检设备信息（频率 + location）
+ */
+data class UninspectedDeviceItem(
+    val frequency: String,   // "日检" / "周检" / "月检"
+    val location: String     // device_location
+)
+
+/**
+ * 未点检必须设备列表响应
+ */
+data class UninspectedMandatoryResponse(
+    val uninspectedList: List<UninspectedDeviceItem>,
+    val abnormalList: List<UninspectedDeviceItem>
+)
+
+/**
+ * 当月完全未点检设备信息（跨所有频率，零记录）
+ */
+data class UninspectedMonthlyDevice(
+    val deviceModel: String,
+    val deviceName: String,
+    val deviceLocation: String
+)
+
+/**
+ * 当月未点检设备列表响应
+ */
+data class UninspectedMonthlyResponse(
+    val year: Int,
+    val month: Int,
+    val totalDevices: Int,
+    val uninspectedCount: Int,
+    val uninspectedDevices: List<UninspectedMonthlyDevice>
+)
+
