@@ -130,6 +130,8 @@ private fun InspectionForm(
     var pendingPhotoItemName by remember { mutableStateOf<String?>(null) }
     var pendingPhotoFilePath by remember { mutableStateOf<String?>(null) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    var showPhotoReminder by remember { mutableStateOf(false) }
+    var missingPhotoItemNames by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -261,7 +263,20 @@ private fun InspectionForm(
                 }
             } else {
                 Button(
-                    onClick = { viewModel.submitInspection() },
+                    onClick = {
+                        // 提交前检查：异常 + requirePhoto 但没有本地照片的项
+                        val missing = state.items.filter { item ->
+                            item.template.requirePhoto &&
+                                item.selectedNormal == false &&
+                                item.photoLocalPaths.isEmpty()
+                        }.map { it.template.itemName }
+                        if (missing.isNotEmpty()) {
+                            missingPhotoItemNames = missing
+                            showPhotoReminder = true
+                        } else {
+                            viewModel.submitInspection()
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
                     enabled = !state.isSubmitting
                 ) {
@@ -273,6 +288,28 @@ private fun InspectionForm(
                     }
                 }
             }
+        }
+
+        // ===== 提交前拍照提醒弹窗 =====
+        if (showPhotoReminder) {
+            AlertDialog(
+                onDismissRequest = { showPhotoReminder = false },
+                title = { Text("📷 以下异常项需要拍照") },
+                text = {
+                    Text(missingPhotoItemNames.joinToString("、"))
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showPhotoReminder = false
+                        viewModel.submitInspection()
+                    }) { Text("仍要提交") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPhotoReminder = false }) {
+                        Text("去拍照")
+                    }
+                }
+            )
         }
     }
 }
