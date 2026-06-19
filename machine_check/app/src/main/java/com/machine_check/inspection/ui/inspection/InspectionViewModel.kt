@@ -296,14 +296,6 @@ class InspectionViewModel : ViewModel() {
         }
     }
 
-    /** 跳过拍照，直接完成 */
-    fun skipPhotoUpload() {
-        _uiState.update {
-            val s = it as? InspectionUiState.Form ?: return
-            s.copy(phase2Pending = false, submitSuccess = true)
-        }
-    }
-
     // ========== 图片处理 ==========
 
     private fun compressImage(filePath: String): String? {
