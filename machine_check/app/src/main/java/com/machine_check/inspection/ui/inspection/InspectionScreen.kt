@@ -124,20 +124,23 @@ private fun InspectionForm(
     modifier: Modifier
 ) {
     val context = LocalContext.current
-    // 相机状态：每个 item 独立管理 URI
     var pendingPhotoItemName by remember { mutableStateOf<String?>(null) }
+    var pendingPhotoFilePath by remember { mutableStateOf<String?>(null) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-            cameraUri?.let { uri ->
-                val idx = state.items.indexOfFirst { it.template.itemName == pendingPhotoItemName }
-                if (idx >= 0) viewModel.onPhotoTaken(idx, uri.path ?: "")
+            val filePath = pendingPhotoFilePath
+            val itemName = pendingPhotoItemName
+            if (filePath != null && itemName != null) {
+                val idx = state.items.indexOfFirst { it.template.itemName == itemName }
+                if (idx >= 0) viewModel.onPhotoTaken(idx, filePath)
             }
         }
         pendingPhotoItemName = null
+        pendingPhotoFilePath = null
     }
 
     /** 为指定检查项拍照 */
@@ -145,6 +148,7 @@ private fun InspectionForm(
         val photoDir = File(context.cacheDir, "inspection_photos")
         photoDir.mkdirs()
         val photoFile = File(photoDir, "photo_${System.currentTimeMillis()}.jpg")
+        pendingPhotoFilePath = photoFile.absolutePath  // 保存真实路径
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
         cameraUri = uri
         pendingPhotoItemName = itemName
@@ -159,14 +163,11 @@ private fun InspectionForm(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Warning, null, tint = Color(0xFFE65100), modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("请逐项拍照上传（${state.uploadedCount}/${state.totalPhotoCount}）",
+                        Text("异常项必须拍照上传（${state.uploadedCount}/${state.totalPhotoCount}）",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color(0xFFE65100),
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = { viewModel.skipPhotoUpload() }) {
-                            Text("跳过", color = Color(0xFFE65100))
-                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     // 逐项显示拍照按钮
@@ -224,13 +225,15 @@ private fun InspectionForm(
         // 底部提交按钮
         Surface(modifier = Modifier.fillMaxWidth(), shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
             if (state.phase2Pending) {
-                // 阶段 2：显示完成按钮
+                // 阶段 2：等待拍照上传完成
                 Button(
-                    onClick = { viewModel.skipPhotoUpload() },
+                    onClick = { },
                     modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    enabled = false,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
                 ) {
-                    Text("完成提交（跳过剩余拍照）", style = MaterialTheme.typography.titleMedium)
+                    Text("请先完成拍照上传（${state.uploadedCount}/${state.totalPhotoCount}）",
+                        style = MaterialTheme.typography.titleMedium)
                 }
             } else {
                 Button(
