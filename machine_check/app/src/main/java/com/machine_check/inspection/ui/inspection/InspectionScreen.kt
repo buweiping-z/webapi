@@ -183,24 +183,32 @@ private fun InspectionForm(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (itemState != null && itemState.photoUploadedCount > 0) {
-                                    Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("• $itemName ✓ 已上传 ${itemState.photoUploadedCount} 张",
-                                        style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
-                                } else if (itemState?.isPhotoUploading == true) {
+                                if (itemState?.isPhotoUploading == true) {
                                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("• $itemName 上传中...", style = MaterialTheme.typography.labelSmall)
                                 } else {
-                                    Icon(Icons.Filled.CameraAlt, null, tint = Color(0xFFBF360C), modifier = Modifier.size(18.dp))
+                                    val count = itemState?.photoUploadedCount ?: 0
+                                    val canTakeMore = count < MAX_PHOTOS_PER_ITEM
+                                    Icon(
+                                        if (count > 0) Icons.Filled.CheckCircle else Icons.Filled.CameraAlt,
+                                        null,
+                                        tint = if (count > 0) Color(0xFF4CAF50) else Color(0xFFBF360C),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("• $itemName", style = MaterialTheme.typography.labelSmall, color = Color(0xFFBF360C))
-                                    Spacer(modifier = Modifier.weight(1f))
-                                    FilledTonalButton(
-                                        onClick = { takePhotoForItem(itemName) },
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                    ) { Text("拍照", style = MaterialTheme.typography.labelSmall) }
+                                    Text(
+                                        if (count > 0) "• $itemName 已上传 $count 张" else "• $itemName",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (count > 0) Color(0xFF4CAF50) else Color(0xFFBF360C)
+                                    )
+                                    if (canTakeMore) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        FilledTonalButton(
+                                            onClick = { takePhotoForItem(itemName) },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                        ) { Text("拍照", style = MaterialTheme.typography.labelSmall) }
+                                    }
                                 }
                             }
                         }
@@ -231,15 +239,25 @@ private fun InspectionForm(
         // 底部提交按钮
         Surface(modifier = Modifier.fillMaxWidth(), shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
             if (state.phase2Pending) {
-                // 阶段 2：等待拍照上传完成
+                // 阶段 2：所有异常项至少 1 张照片后可手动完成
+                val allCovered = state.pendingPhotoItems.all { ppi ->
+                    ppi.missingItems.all { mi ->
+                        val idx = state.items.indexOfFirst { it.template.itemName == mi.itemName }
+                        idx >= 0 && state.items[idx].photoUploadedCount > 0
+                    }
+                }
                 Button(
-                    onClick = { },
+                    onClick = { viewModel.finishPhase2() },
                     modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
-                    enabled = false,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    enabled = allCovered,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (allCovered) Color(0xFF4CAF50) else Color(0xFFFF9800)
+                    )
                 ) {
-                    Text("请先完成拍照上传（${state.uploadedCount}/${state.totalPhotoCount}）",
-                        style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (allCovered) "完成提交" else "请先完成拍照上传（${state.uploadedCount}/${state.totalPhotoCount}）",
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             } else {
                 Button(

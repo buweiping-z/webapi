@@ -172,11 +172,8 @@ class InspectionViewModel : ViewModel() {
                         photoUploadedCount = items2[itemIndex].photoUploadedCount + 1
                     )
                     val newUploaded = (_uiState.value as? InspectionUiState.Form)?.uploadedCount?.plus(1) ?: 1
-                    val total = (_uiState.value as? InspectionUiState.Form)?.totalPhotoCount ?: 0
                     _uiState.update { (it as InspectionUiState.Form).copy(items = items2, uploadedCount = newUploaded) }
-                    if (newUploaded >= total) {
-                        _uiState.update { (it as InspectionUiState.Form).copy(phase2Pending = false, submitSuccess = true) }
-                    }
+                    // Phase 2 不自动完成 — 由用户手动点击"完成提交"
                 },
                 onFailure = {
                     val items2 = (_uiState.value as? InspectionUiState.Form)?.items?.toMutableList() ?: return@launch
@@ -198,6 +195,12 @@ class InspectionViewModel : ViewModel() {
         }
         updatedItems[itemIndex] = item.copy(photoLocalPaths = newPaths)
         _uiState.update { (it as InspectionUiState.Form).copy(items = updatedItems) }
+    }
+
+    /** Phase 2 手动完成 — 所有异常项至少 1 张照片后用户点击"完成提交" */
+    fun finishPhase2() {
+        val state = _uiState.value as? InspectionUiState.Form ?: return
+        _uiState.update { state.copy(phase2Pending = false, submitSuccess = true) }
     }
 
     fun clearError() {
