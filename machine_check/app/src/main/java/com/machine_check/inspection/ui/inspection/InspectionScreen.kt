@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +31,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.machine_check.inspection.data.models.InspectionTemplate
+import com.machine_check.inspection.data.models.MAX_PHOTOS_PER_ITEM
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -172,17 +175,19 @@ private fun InspectionForm(
                     Spacer(modifier = Modifier.height(8.dp))
                     // 逐项显示拍照按钮
                     state.pendingPhotoItems.forEach { ppi ->
-                        ppi.missingItems.forEach { itemName ->
+                        ppi.missingItems.forEach { missingItem ->
+                            val itemName = missingItem.itemName
                             val itemIdx = state.items.indexOfFirst { it.template.itemName == itemName }
                             val itemState = if (itemIdx >= 0) state.items[itemIdx] else null
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (itemState?.photoUploaded == true) {
+                                if (itemState != null && itemState.photoUploadedCount > 0) {
                                     Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("• $itemName ✓ 已上传", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
+                                    Text("• $itemName ✓ 已上传 ${itemState.photoUploadedCount} 张",
+                                        style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
                                 } else if (itemState?.isPhotoUploading == true) {
                                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -217,6 +222,7 @@ private fun InspectionForm(
                     onNumericValueChanged = { viewModel.onNumericValueChanged(index, it) },
                     onRemarkChanged = { viewModel.onRemarkChanged(index, it) },
                     onTakePhoto = { takePhotoForItem(itemState.template.itemName) },
+                    onRemovePhoto = { photoIndex -> viewModel.removeLocalPhoto(index, photoIndex) },
                     isPhase2 = state.phase2Pending
                 )
             }
@@ -260,6 +266,7 @@ private fun InspectionItemCard(
     onNumericValueChanged: (String) -> Unit,
     onRemarkChanged: (String) -> Unit,
     onTakePhoto: () -> Unit,
+    onRemovePhoto: (Int) -> Unit,
     isPhase2: Boolean
 ) {
     val template = itemState.template; val isValid = itemState.isValid
@@ -302,21 +309,77 @@ private fun InspectionItemCard(
             if (template.requirePhoto) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                // 照片预览
-                if (itemState.photoLocalPath != null) {
-                    AsyncImage(
-                        model = File(itemState.photoLocalPath), contentDescription = "照片预览",
-                        modifier = Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentScale = ContentScale.Fit
-                    )
+                // 缩略图网格 + 拍照按钮
+                val paths = itemState.photoLocalPaths
+                if (paths.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // 缩略图网格（每行 3 张）
+                        val rows = paths.chunked(3)
+                        for (row in rows) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                for (path in row) {
+                                    val globalIdx = paths.indexOf(path)
+                                    Box(modifier = Modifier.weight(1f).height(80.dp)) {
+                                        AsyncImage(
+                                            model = File(path),
+                                            contentDescription = "照片 ${globalIdx + 1}",
+                                            modifier = Modifier.fillMaxSize()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        // 删除按钮（右上角）
+                                        IconButton(
+                                            onClick = { onRemovePhoto(globalIdx) },
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .size(24.dp)
+                                                .padding(2.dp)
+                                        ) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color.Black.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(20.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Close,
+                                                    contentDescription = "删除",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                // 填充空位保持对齐
+                                repeat(3 - row.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
                 }
 
-                // 拍照按钮（阶段 2 pending 时不重复显示——已在顶部 banner 中）
+                // 拍照按钮（Phase 2 pending 时不重复显示 — 已在顶部 banner 中）
                 if (!isPhase2) {
-                    OutlinedButton(onClick = onTakePhoto, modifier = Modifier.fillMaxWidth()) {
+                    val count = itemState.photoLocalPaths.size
+                    OutlinedButton(
+                        onClick = onTakePhoto,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = count < MAX_PHOTOS_PER_ITEM
+                    ) {
                         Icon(Icons.Filled.CameraAlt, null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (itemState.photoLocalPath != null) "重新拍照" else "拍照")
+                        Text(
+                            when {
+                                count >= MAX_PHOTOS_PER_ITEM -> "已拍满 $MAX_PHOTOS_PER_ITEM 张"
+                                count > 0 -> "📷 拍照（${count}/$MAX_PHOTOS_PER_ITEM）"
+                                else -> "拍照"
+                            }
+                        )
                     }
                 }
             }
