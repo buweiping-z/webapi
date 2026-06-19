@@ -5,9 +5,11 @@ import android.graphics.BitmapFactory
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.machine_check.inspection.data.models.InspectionTemplate
+import com.machine_check.inspection.data.models.MAX_PHOTOS_PER_ITEM
 import com.machine_check.inspection.data.models.PendingPhotoItem
 import com.machine_check.inspection.data.models.SaveDailyRecordRequest
 import com.machine_check.inspection.data.models.SaveRecordItem
+
 import com.machine_check.inspection.data.repository.InspectionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,10 +30,11 @@ data class InspectionItemState(
     val isValid: Boolean = true,
     val remarkRequired: Boolean = false,
     val isOutOfRange: Boolean = false,
-    // 照片相关
-    val photoLocalPath: String? = null,
+    // 照片相关（多张）
+    val photoLocalPaths: List<String> = emptyList(),  // 从 String? 改为 List<String>
     val isPhotoUploading: Boolean = false,
-    val photoUploaded: Boolean = false      // 上传成功标记
+    val uploadingIndex: Int = -1,                      // 新增：正在上传第几张
+    val photoUploadedCount: Int = 0                    // 新增：已上传张数
 )
 
 /**
@@ -124,21 +127,25 @@ class InspectionViewModel : ViewModel() {
     /** 拍照回调 — 两阶段提交第二阶段：拍照后即时上传 */
     fun onPhotoTaken(itemIndex: Int, filePath: String) {
         val state = _uiState.value as? InspectionUiState.Form ?: return
-
         val updatedItems = state.items.toMutableList()
-        updatedItems[itemIndex] = updatedItems[itemIndex].copy(
-            photoLocalPath = filePath, isPhotoUploading = true
+        val currentItem = updatedItems[itemIndex]
+        val newPaths = currentItem.photoLocalPaths.toMutableList()
+        if (newPaths.size < MAX_PHOTOS_PER_ITEM) {
+            newPaths.add(filePath)
+        }
+        updatedItems[itemIndex] = currentItem.copy(
+            photoLocalPaths = newPaths,
+            isPhotoUploading = true,
+            uploadingIndex = newPaths.size - 1
         )
         _uiState.update { (it as InspectionUiState.Form).copy(items = updatedItems) }
 
-        // 即时压缩 + 上传
+        // 即时压缩 + 上传（提交后 Phase 2 场景中调用）
         viewModelScope.launch {
             val item = updatedItems[itemIndex]
             val itemName = item.template.itemName
-
-            // 从 pendingPhotoItems 找到对应的 recordId
             val recordId = state.pendingPhotoItems
-                .firstOrNull { ppi -> ppi.missingItems.contains(itemName) }
+                .firstOrNull { ppi -> ppi.missingItems.any { it.itemName == itemName } }
                 ?.recordId ?: 0
             if (recordId == 0) {
                 updatedItems[itemIndex] = updatedItems[itemIndex].copy(isPhotoUploading = false)
@@ -146,16 +153,13 @@ class InspectionViewModel : ViewModel() {
                 return@launch
             }
 
-            // 压缩
             val compressedPath = compressImage(filePath)
             val uploadPath = compressedPath ?: filePath
-
+            val photoOrder = newPaths.size - 1
             val result = repository.uploadPhoto(
                 filePath = uploadPath, recordId = recordId,
-                itemName = itemName, uploadedBy = state.employeeId
+                itemName = itemName, photoOrder = photoOrder, uploadedBy = state.employeeId
             )
-
-            // 清理压缩临时文件
             if (compressedPath != null && compressedPath != filePath) {
                 File(compressedPath).delete()
             }
@@ -164,20 +168,14 @@ class InspectionViewModel : ViewModel() {
                 onSuccess = {
                     val items2 = (_uiState.value as? InspectionUiState.Form)?.items?.toMutableList() ?: return@launch
                     items2[itemIndex] = items2[itemIndex].copy(
-                        isPhotoUploading = false, photoUploaded = true
+                        isPhotoUploading = false, uploadingIndex = -1,
+                        photoUploadedCount = items2[itemIndex].photoUploadedCount + 1
                     )
-                    val newUploaded = ( _uiState.value as? InspectionUiState.Form)?.uploadedCount?.plus(1) ?: 1
-                    val total = ( _uiState.value as? InspectionUiState.Form)?.totalPhotoCount ?: 0
-                    _uiState.update {
-                        (it as InspectionUiState.Form).copy(
-                            items = items2, uploadedCount = newUploaded
-                        )
-                    }
-                    // 全部上传完成 → 自动成功
+                    val newUploaded = (_uiState.value as? InspectionUiState.Form)?.uploadedCount?.plus(1) ?: 1
+                    val total = (_uiState.value as? InspectionUiState.Form)?.totalPhotoCount ?: 0
+                    _uiState.update { (it as InspectionUiState.Form).copy(items = items2, uploadedCount = newUploaded) }
                     if (newUploaded >= total) {
-                        _uiState.update {
-                            (it as InspectionUiState.Form).copy(phase2Pending = false, submitSuccess = true)
-                        }
+                        _uiState.update { (it as InspectionUiState.Form).copy(phase2Pending = false, submitSuccess = true) }
                     }
                 },
                 onFailure = {
@@ -187,6 +185,19 @@ class InspectionViewModel : ViewModel() {
                 }
             )
         }
+    }
+
+    /** 移除本地照片（拍照后、提交前预览时删除） */
+    fun removeLocalPhoto(itemIndex: Int, photoIndex: Int) {
+        val state = _uiState.value as? InspectionUiState.Form ?: return
+        val updatedItems = state.items.toMutableList()
+        val item = updatedItems[itemIndex]
+        val newPaths = item.photoLocalPaths.toMutableList()
+        if (photoIndex in newPaths.indices) {
+            newPaths.removeAt(photoIndex)
+        }
+        updatedItems[itemIndex] = item.copy(photoLocalPaths = newPaths)
+        _uiState.update { (it as InspectionUiState.Form).copy(items = updatedItems) }
     }
 
     fun clearError() {
@@ -273,26 +284,35 @@ class InspectionViewModel : ViewModel() {
                         }
                     } else {
                         // 进入阶段 2
-                        val totalPhotos = response.pendingPhotoItems.sumOf { it.missingItems.size }
                         val currentItems = (_uiState.value as InspectionUiState.Form).items
+                        val totalPhotos = response.pendingPhotoItems.sumOf { ppi ->
+                            ppi.missingItems.sumOf { mi ->
+                                val idx = currentItems.indexOfFirst { it.template.itemName == mi.itemName }
+                                if (idx >= 0) currentItems[idx].photoLocalPaths.size.coerceAtLeast(1) else 1
+                            }
+                        }
 
-                        // 自动上传已在填表时拍好的照片
+                        // 自动上传已在填表时拍好的照片（每项所有本地照片串行上传）
                         var autoUploaded = 0
                         for (ppi in response.pendingPhotoItems) {
-                            for (itemName in ppi.missingItems) {
+                            for (missingItem in ppi.missingItems) {
+                                val itemName = missingItem.itemName
                                 val idx = currentItems.indexOfFirst { it.template.itemName == itemName }
                                 if (idx < 0) continue
                                 val item = currentItems[idx]
-                                val localPath = item.photoLocalPath
-                                if (localPath != null && File(localPath).exists()) {
-                                    // 已有照片 → 自动上传（不弹拍照界面）
-                                    autoUploaded++
-                                    viewModelScope.launch {
+                                val paths = item.photoLocalPaths
+                                if (paths.isNotEmpty()) {
+                                    // 串行上传该项的所有本地照片
+                                    for ((order, path) in paths.withIndex()) {
+                                        autoUploaded++
+                                        _uiState.update {
+                                            val items2 = (it as InspectionUiState.Form).items.toMutableList()
+                                            items2[idx] = items2[idx].copy(isPhotoUploading = true, uploadingIndex = order)
+                                            (it as InspectionUiState.Form).copy(items = items2)
+                                        }
                                         autoUploadExistingPhoto(
-                                            itemIndex = idx,
-                                            recordId = ppi.recordId,
-                                            filePath = localPath,
-                                            itemName = itemName
+                                            itemIndex = idx, recordId = ppi.recordId,
+                                            filePath = path, itemName = itemName, photoOrder = order
                                         )
                                     }
                                 }
@@ -324,13 +344,12 @@ class InspectionViewModel : ViewModel() {
 
     /** 自动上传已拍好的照片（不弹拍照界面） */
     private suspend fun autoUploadExistingPhoto(
-        itemIndex: Int, recordId: Int, filePath: String, itemName: String
+        itemIndex: Int, recordId: Int, filePath: String, itemName: String, photoOrder: Int
     ) {
         val state = _uiState.value as? InspectionUiState.Form ?: return
 
-        // 标记上传中
         val items = state.items.toMutableList()
-        items[itemIndex] = items[itemIndex].copy(isPhotoUploading = true)
+        items[itemIndex] = items[itemIndex].copy(isPhotoUploading = true, uploadingIndex = photoOrder)
         _uiState.update { (it as InspectionUiState.Form).copy(items = items) }
 
         val compressedPath = compressImage(filePath)
@@ -338,7 +357,7 @@ class InspectionViewModel : ViewModel() {
 
         val result = repository.uploadPhoto(
             filePath = uploadPath, recordId = recordId,
-            itemName = itemName, uploadedBy = state.employeeId
+            itemName = itemName, photoOrder = photoOrder, uploadedBy = state.employeeId
         )
 
         if (compressedPath != null && compressedPath != filePath) {
@@ -348,23 +367,25 @@ class InspectionViewModel : ViewModel() {
         result.fold(
             onSuccess = {
                 val items2 = (_uiState.value as? InspectionUiState.Form)?.items?.toMutableList() ?: return
-                items2[itemIndex] = items2[itemIndex].copy(
-                    isPhotoUploading = false, photoUploaded = true
+                val currentItem = items2[itemIndex]
+                val newPhotoCount = currentItem.photoUploadedCount + 1
+                val allDone = newPhotoCount >= currentItem.photoLocalPaths.size
+                items2[itemIndex] = currentItem.copy(
+                    isPhotoUploading = !allDone,
+                    uploadingIndex = if (allDone) -1 else currentItem.uploadingIndex,
+                    photoUploadedCount = newPhotoCount
                 )
                 val newUploaded = (_uiState.value as? InspectionUiState.Form)?.uploadedCount?.plus(1) ?: 1
                 val total = (_uiState.value as? InspectionUiState.Form)?.totalPhotoCount ?: 0
-                _uiState.update {
-                    (it as InspectionUiState.Form).copy(items = items2, uploadedCount = newUploaded)
-                }
+                _uiState.update { (it as InspectionUiState.Form).copy(items = items2, uploadedCount = newUploaded) }
                 if (newUploaded >= total) {
-                    _uiState.update {
-                        (it as InspectionUiState.Form).copy(phase2Pending = false, submitSuccess = true)
-                    }
+                    _uiState.update { (it as InspectionUiState.Form).copy(phase2Pending = false, submitSuccess = true) }
                 }
             },
             onFailure = {
+                // 单张失败不阻塞其他照片上传
                 val items2 = (_uiState.value as? InspectionUiState.Form)?.items?.toMutableList() ?: return
-                items2[itemIndex] = items2[itemIndex].copy(isPhotoUploading = false)
+                items2[itemIndex] = items2[itemIndex].copy(isPhotoUploading = false, uploadingIndex = -1)
                 _uiState.update { (it as InspectionUiState.Form).copy(items = items2) }
             }
         )
