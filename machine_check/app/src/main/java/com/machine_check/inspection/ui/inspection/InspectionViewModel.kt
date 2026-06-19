@@ -253,7 +253,7 @@ class InspectionViewModel : ViewModel() {
                 else -> "" to true
             }
             SaveRecordItem(day = today, itemName = template.itemName,
-                resultValue = resultValue, remark = item.remark)
+                resultValue = resultValue, isNormal = isNormal, remark = item.remark)
         }
 
         val request = SaveDailyRecordRequest(
