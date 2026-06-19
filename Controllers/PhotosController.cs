@@ -87,7 +87,15 @@ namespace webapi.Controllers
 
             // === 缩略图生成 + 原图缩放 ===
             ms.Position = 0;
-            using var originalBitmap = SKBitmap.Decode(ms);
+            SKBitmap? originalBitmap;
+            try
+            {
+                originalBitmap = SKBitmap.Decode(ms);
+            }
+            catch (Exception)
+            {
+                return BadRequest(new { success = false, message = "无法解码图片，文件可能已损坏" });
+            }
             if (originalBitmap == null)
                 return BadRequest(new { success = false, message = "无法解码图片" });
 
