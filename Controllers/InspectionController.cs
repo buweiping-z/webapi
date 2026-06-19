@@ -447,7 +447,11 @@ namespace webapi.Controllers
                             {
                                 recordId = rec.Id,
                                 periodKey = recPeriodKey,
-                                missingItems = abnormalPhotoItems
+                                missingItems = abnormalPhotoItems.Select(itemName => new
+                                {
+                                    itemName = itemName,
+                                    existingPhotoCount = 0  // 重检时旧照片已删除，始终为0
+                                }).ToList()
                             });
                         }
                         else
