@@ -13,10 +13,12 @@ namespace webapi.Controllers
     public class InspectionController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IWebHostEnvironment _env;
 
-        public InspectionController(AppDbContext context)
+        public InspectionController(AppDbContext context, IWebHostEnvironment env)
         {
             _context = context;
+            _env = env;
         }
 
         // 旧接口：提交简单点检（兼容）
@@ -32,6 +34,15 @@ namespace webapi.Controllers
             if (!isQualified)
                 return BadRequest(new { success = false, message = "该工号无点检资格" });
 
+            // 计算 pending_photo 状态：检查是否有异常+requirePhoto 的项
+            var requirePhotoItems = await _context.InspectionTemplates
+                .Where(t => t.DeviceModel == request.DeviceName && t.RequirePhoto)
+                .Select(t => t.ItemName)
+                .ToListAsync();
+
+            var hasAbnormalMissingPhoto = request.CheckItems.Any(c =>
+                requirePhotoItems.Contains(c.ItemName) && c.Result == "异常");
+
             var record = new InspectionRecord
             {
                 EmployeeId = request.EmployeeId,
@@ -39,7 +50,7 @@ namespace webapi.Controllers
                 DeviceModel = request.DeviceName, // 暂时兼容
                 InspectionTime = DateTime.Now,
                 ResultsJson = System.Text.Json.JsonSerializer.Serialize(request.CheckItems),
-                Status = "submitted"
+                Status = hasAbnormalMissingPhoto ? InspectionStatus.PendingPhoto : InspectionStatus.Submitted
             };
 
             _context.InspectionRecords.Add(record);
@@ -82,25 +93,53 @@ namespace webapi.Controllers
             var frequency = string.IsNullOrEmpty(request.Frequency) ? "日" : request.Frequency;
             var periodKey = GeneratePeriodKey(frequency, now);
 
-            // 同一周期已有记录时先删除旧记录（异常重检场景），级联删除旧结果
+            // ===== 照片迁移：删除旧记录前，先捕获旧照片信息 =====
+            List<(string PhotoPath, string ThumbnailPath, string ItemName, int PhotoOrder, string UploadedBy)> oldPhotos = new();
+            int? oldRecordId = null;
+
             var existingRecord = await _context.InspectionRecords
+                .AsTracking()
                 .FirstOrDefaultAsync(r => r.DeviceModel == request.DeviceModel
                     && r.Frequency == frequency
                     && r.PeriodKey == periodKey);
             if (existingRecord != null)
             {
+                oldRecordId = existingRecord.Id;
+                // 在级联删除之前，捕获所有照片记录到内存
+                var oldPhotoRows = await _context.InspectionPhotos
+                    .Where(p => p.RecordId == existingRecord.Id)
+                    .Select(p => new {
+                        p.PhotoPath, p.ThumbnailPath, p.ItemName,
+                        p.PhotoOrder, p.UploadedBy
+                    })
+                    .ToListAsync();
+
+                oldPhotos = oldPhotoRows
+                    .Select(p => (p.PhotoPath, p.ThumbnailPath ?? "",
+                        p.ItemName, p.PhotoOrder, p.UploadedBy))
+                    .ToList();
+
                 _context.InspectionRecords.Remove(existingRecord);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(); // 触发级联删除 inspection_photos 行
             }
 
             // 创建新记录
+            // 计算 pending_photo 状态
+            var requirePhotoItems = await _context.InspectionTemplates
+                .Where(t => t.DeviceModel == request.DeviceModel && t.RequirePhoto)
+                .Select(t => t.ItemName)
+                .ToListAsync();
+
+            var hasAbnormalMissingPhoto = request.Results.Any(r =>
+                requirePhotoItems.Contains(r.ItemName) && !r.IsNormal);
+
             var record = new InspectionRecord
             {
                 EmployeeId = request.EmployeeId,
                 DeviceModel = request.DeviceModel,
                 DeviceName = request.DeviceModel,
                 InspectionTime = now,
-                Status = "submitted",
+                Status = hasAbnormalMissingPhoto ? InspectionStatus.PendingPhoto : InspectionStatus.Submitted,
                 Frequency = frequency,
                 PeriodKey = periodKey,
                 ResultsJson = ""
@@ -125,6 +164,75 @@ namespace webapi.Controllers
 
             await _context.SaveChangesAsync();
 
+            // ===== 照片迁移：将旧照片恢复到新 recordId =====
+            if (oldRecordId.HasValue && oldPhotos.Count > 0)
+            {
+                var webRootPath = _env.WebRootPath;
+                var oldDir = Path.Combine(webRootPath, "photos",
+                    oldRecordId.Value.ToString());
+                var nowDate = record.InspectionTime;
+                var newDir = Path.Combine(webRootPath, "photos",
+                    nowDate.Year.ToString(), nowDate.Month.ToString("D2"),
+                    record.Id.ToString());
+
+                // 插入新的 InspectionPhoto 行
+                foreach (var op in oldPhotos)
+                {
+                    // 将旧路径中的 recordId 替换为新的
+                    var newPhotoPath = op.PhotoPath.Replace(
+                        $"/{oldRecordId.Value}/", $"/{record.Id}/");
+                    var newThumbPath = op.ThumbnailPath?.Replace(
+                        $"/{oldRecordId.Value}/", $"/{record.Id}/");
+
+                    _context.InspectionPhotos.Add(new InspectionPhoto
+                    {
+                        RecordId = record.Id,
+                        ItemName = op.ItemName,
+                        PhotoPath = newPhotoPath ?? op.PhotoPath,
+                        ThumbnailPath = newThumbPath,
+                        PhotoOrder = op.PhotoOrder,
+                        UploadedBy = op.UploadedBy,
+                        CreatedAt = DateTime.Now
+                    });
+                }
+
+                // 迁移文件目录（如果旧目录还存在）
+                if (Directory.Exists(oldDir))
+                {
+                    if (!Directory.Exists(newDir))
+                        Directory.CreateDirectory(Path.GetDirectoryName(newDir)!);
+
+                    // 移动所有旧文件到新目录
+                    foreach (var file in Directory.GetFiles(oldDir))
+                    {
+                        var fileName = Path.GetFileName(file);
+                        var destFile = Path.Combine(newDir, fileName);
+                        if (!System.IO.File.Exists(destFile))
+                            System.IO.File.Move(file, destFile);
+                    }
+                    // 删除旧目录（如果已空）
+                    if (!Directory.EnumerateFileSystemEntries(oldDir).Any())
+                        Directory.Delete(oldDir);
+                }
+
+                await _context.SaveChangesAsync();
+
+                // 如果旧照片已覆盖所有异常项，更新状态
+                if (record.Status == InspectionStatus.PendingPhoto)
+                {
+                    var photoItems = oldPhotos.Select(p => p.ItemName).Distinct().ToHashSet();
+                    var abnormalItems = request.Results
+                        .Where(r => !r.IsNormal && requirePhotoItems.Contains(r.ItemName))
+                        .Select(r => r.ItemName);
+                    var allCovered = abnormalItems.All(item => photoItems.Contains(item));
+                    if (allCovered)
+                    {
+                        record.Status = InspectionStatus.Submitted;
+                        await _context.SaveChangesAsync();
+                    }
+                }
+            }
+
             return Ok(new { success = true, recordId = record.Id, message = "点检数据已保存" });
         }
 
@@ -144,15 +252,16 @@ namespace webapi.Controllers
         }
 
         [HttpGet("records/monthly")]
-        public async Task<IActionResult> GetMonthlyRecords(string deviceModel, int year, int month)
+        public async Task<IActionResult> GetMonthlyRecords(
+            string deviceModel, int year, int month,
+            int page = 1, int pageSize = 100)
         {
             try
             {
                 var startDate = new DateTime(year, month, 1);
-                var endDate = startDate.AddMonths(1).AddDays(-1);
+                var endDate = startDate.AddMonths(1).AddTicks(-1);
 
-                // 使用具体类 MonthlyRecordDto
-                var records = await (
+                var query =
                     from r in _context.InspectionRecords
                     join res in _context.InspectionResults on r.Id equals res.RecordId
                     where r.DeviceModel == deviceModel
@@ -160,13 +269,23 @@ namespace webapi.Controllers
                           && r.InspectionTime <= endDate
                     select new MonthlyRecordDto
                     {
+                        RecordId = r.Id,
                         ItemName = res.ItemName,
                         InspectionDay = r.InspectionTime.Day,
                         ResultValue = res.ResultValue,
                         Remark = res.Remark,
-                        IsNormal = res.IsNormal
-                    }
-                ).ToListAsync();
+                        IsNormal = res.IsNormal,
+                        Status = r.Status
+                    };
+
+                var totalCount = await query.CountAsync();
+
+                var records = await query
+                    .OrderByDescending(r => r.InspectionDay)
+                    .ThenByDescending(r => r.ItemName)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
 
                 // 转换结果值：正常 → ○，异常 → ×
                 foreach (var record in records)
@@ -177,7 +296,13 @@ namespace webapi.Controllers
                         record.ResultValue = "×";
                 }
 
-                return Ok(records);
+                return Ok(new PagedResponse<MonthlyRecordDto>
+                {
+                    Items = records,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalCount = totalCount
+                });
             }
             catch (Exception ex)
             {
@@ -185,87 +310,173 @@ namespace webapi.Controllers
             }
         }
 
-        // 4. 保存点检记录
+        // 4. 保存点检记录（事务 + 批量 upsert 优化版）
         [HttpPost("records/save")]
         public async Task<IActionResult> SaveDailyRecord([FromBody] SaveDailyRecordRequest request)
         {
             try
             {
                 var inspectionDate = request.InspectionMonth;
+                var employeeId = string.IsNullOrEmpty(request.EmployeeId) ? "web" : request.EmployeeId;
+                var frequency = string.IsNullOrEmpty(request.Frequency) ? "日" : request.Frequency;
 
-                foreach (var item in request.Results)
+                // 收集所有周期键
+                var periodKeys = request.Results
+                    .Select(item => GeneratePeriodKey(frequency,
+                        new DateTime(inspectionDate.Year, inspectionDate.Month, item.Day)))
+                    .Distinct()
+                    .ToList();
+
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    // 转换前端传来的值：○ → 正常，× → 异常
-                    string saveValue = item.ResultValue;
-                    if (saveValue == "○")
-                        saveValue = "正常";
-                    else if (saveValue == "×")
-                        saveValue = "异常";
+                    // ===== 批量查询：查出所有已有的 records =====
+                    var existingRecords = await _context.InspectionRecords
+                        .AsTracking()
+                        .Where(r => r.DeviceModel == request.DeviceModel
+                                    && r.Frequency == frequency
+                                    && periodKeys.Contains(r.PeriodKey))
+                        .ToListAsync();
 
-                    // 构造周期键（旧 Web 前端默认日检）
-                    var periodKey = $"{inspectionDate.Year:0000}-{inspectionDate.Month:00}-{item.Day:00}";
-                    var frequency = "日";
+                    var existingRecordMap = existingRecords
+                        .ToDictionary(r => r.PeriodKey);
 
-                    // 查找是否已有记录
-                    var existingRecord = await _context.InspectionRecords
-                        .FirstOrDefaultAsync(r => r.DeviceModel == request.DeviceModel
-                            && r.Frequency == frequency
-                            && r.PeriodKey == periodKey);
-
-                    if (existingRecord != null)
+                    // 补齐缺失的 records
+                    foreach (var periodKey in periodKeys)
                     {
-                        // 更新已有记录
-                        var existingResult = await _context.InspectionResults
-                            .FirstOrDefaultAsync(res => res.RecordId == existingRecord.Id && res.ItemName == item.ItemName);
-
-                        if (existingResult != null)
+                        if (!existingRecordMap.ContainsKey(periodKey))
                         {
-                            existingResult.ResultValue = saveValue;
-                            existingResult.Remark = item.Remark;
-                            existingResult.IsNormal = (saveValue == "正常");
+                            var dayItem = request.Results.FirstOrDefault(r =>
+                                GeneratePeriodKey(frequency,
+                                    new DateTime(inspectionDate.Year, inspectionDate.Month, r.Day)) == periodKey);
+                            var day = dayItem?.Day ?? 1;
+
+                            var newRecord = new InspectionRecord
+                            {
+                                EmployeeId = employeeId,
+                                DeviceModel = request.DeviceModel,
+                                DeviceName = request.DeviceModel,
+                                InspectionTime = new DateTime(inspectionDate.Year, inspectionDate.Month, day),
+                                Status = InspectionStatus.Submitted,
+                                ResultsJson = "",
+                                Frequency = frequency,
+                                PeriodKey = periodKey
+                            };
+                            _context.InspectionRecords.Add(newRecord);
+                            await _context.SaveChangesAsync();
+                            existingRecordMap[periodKey] = newRecord;
+                        }
+                    }
+
+                    // ===== 批量 upsert results =====
+                    var upsertSql = @"
+                INSERT INTO inspection_results (record_id, item_name, result_value, is_normal, remark)
+                VALUES ({0}, {1}, {2}, {3}, {4})
+                ON DUPLICATE KEY UPDATE
+                    result_value = VALUES(result_value),
+                    is_normal = VALUES(is_normal),
+                    remark = VALUES(remark)";
+
+                    foreach (var item in request.Results)
+                    {
+                        // 转换前端传来的值：○ → 正常，× → 异常
+                        string saveValue = item.ResultValue;
+                        if (saveValue == "○")
+                            saveValue = "正常";
+                        else if (saveValue == "×")
+                            saveValue = "异常";
+
+                        var periodKey = GeneratePeriodKey(frequency,
+                            new DateTime(inspectionDate.Year, inspectionDate.Month, item.Day));
+                        if (!existingRecordMap.TryGetValue(periodKey, out var record))
+                            continue;
+
+                        await _context.Database.ExecuteSqlRawAsync(upsertSql,
+                            record.Id, item.ItemName, saveValue, item.IsNormal, item.Remark);
+                    }
+
+                    // ===== 计算每个 record 的 pending_photo 状态 =====
+                    var requirePhotoItems = await _context.InspectionTemplates
+                        .Where(t => t.DeviceModel == request.DeviceModel && t.RequirePhoto)
+                        .Select(t => t.ItemName)
+                        .ToListAsync();
+
+                    var recordIds = new List<int>();
+                    var pendingPhotoItems = new List<object>();
+
+                    foreach (var kvp in existingRecordMap)
+                    {
+                        var rec = kvp.Value;
+                        var recPeriodKey = kvp.Key;
+
+                        // 收集该 record 的所有异常+requirePhoto 项（按 periodKey 匹配）
+                        var abnormalPhotoItems = request.Results
+                            .Where(r => GeneratePeriodKey(frequency,
+                                    new DateTime(inspectionDate.Year, inspectionDate.Month, r.Day)) == recPeriodKey
+                                && requirePhotoItems.Contains(r.ItemName)
+                                && !r.IsNormal)
+                            .Select(r => r.ItemName)
+                            .ToList();
+
+                        if (abnormalPhotoItems.Count > 0)
+                        {
+                            // 重检场景：删除旧照片（DB + 文件），强制重新上传
+                            var oldPhotos = await _context.InspectionPhotos
+                                .Where(p => p.RecordId == rec.Id
+                                    && abnormalPhotoItems.Contains(p.ItemName))
+                                .ToListAsync();
+
+                            foreach (var op in oldPhotos)
+                            {
+                                var photoFull = Path.Combine(_env.WebRootPath,
+                                    op.PhotoPath.TrimStart('/'));
+                                var thumbFull = op.ThumbnailPath != null
+                                    ? Path.Combine(_env.WebRootPath, op.ThumbnailPath.TrimStart('/'))
+                                    : null;
+                                if (System.IO.File.Exists(photoFull))
+                                    System.IO.File.Delete(photoFull);
+                                if (thumbFull != null && System.IO.File.Exists(thumbFull))
+                                    System.IO.File.Delete(thumbFull);
+                            }
+                            _context.InspectionPhotos.RemoveRange(oldPhotos);
+                            await _context.SaveChangesAsync();
+
+                            // 旧照片已删除 → 全部标记为待上传
+                            rec.Status = InspectionStatus.PendingPhoto;
+                            pendingPhotoItems.Add(new
+                            {
+                                recordId = rec.Id,
+                                periodKey = recPeriodKey,
+                                missingItems = abnormalPhotoItems.Select(itemName => new
+                                {
+                                    itemName = itemName,
+                                    existingPhotoCount = 0  // 重检时旧照片已删除，始终为0
+                                }).ToList()
+                            });
                         }
                         else
                         {
-                            _context.InspectionResults.Add(new InspectionResult
-                            {
-                                RecordId = existingRecord.Id,
-                                ItemName = item.ItemName,
-                                ResultValue = saveValue,
-                                IsNormal = (saveValue == "正常"),
-                                Remark = item.Remark
-                            });
+                            rec.Status = InspectionStatus.Submitted;
                         }
+
+                        recordIds.Add(rec.Id);
                     }
-                    else
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    return Ok(new
                     {
-                        // 创建新记录
-                        var newRecord = new InspectionRecord
-                        {
-                            EmployeeId = string.IsNullOrEmpty(request.EmployeeId) ? "web" : request.EmployeeId,
-                            DeviceModel = request.DeviceModel,
-                            DeviceName = request.DeviceModel,
-                            InspectionTime = new DateTime(inspectionDate.Year, inspectionDate.Month, item.Day),
-                            Status = "submitted",
-                            ResultsJson = "",
-                            Frequency = frequency,
-                            PeriodKey = periodKey
-                        };
-                        _context.InspectionRecords.Add(newRecord);
-                        await _context.SaveChangesAsync();
-
-                        _context.InspectionResults.Add(new InspectionResult
-                        {
-                            RecordId = newRecord.Id,
-                            ItemName = item.ItemName,
-                            ResultValue = saveValue,
-                            IsNormal = (saveValue == "正常"),
-                            Remark = item.Remark
-                        });
-                    }
+                        success = true,
+                        message = "保存成功",
+                        recordIds = recordIds,
+                        pendingPhotoItems = pendingPhotoItems
+                    });
                 }
-
-                await _context.SaveChangesAsync();
-                return Ok(new { success = true, message = "保存成功" });
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -312,6 +523,7 @@ namespace webapi.Controllers
             try
             {
                 var existing = await _context.InspectionSignatures
+                    .AsTracking()
                     .FirstOrDefaultAsync(s => s.DeviceModel == request.DeviceModel
                         && s.Year == request.Year
                         && s.Month == request.Month);
@@ -348,15 +560,28 @@ namespace webapi.Controllers
             }
         }
 
-        // 7. 获取用户列表（用于下拉菜单）
+        // 7. 获取用户列表（用于下拉菜单），支持分页
         [HttpGet("users/list")]
-        public async Task<IActionResult> GetUserList()
+        public async Task<IActionResult> GetUserList(int page = 1, int pageSize = 100)
         {
-            var users = await _context.InspectionUsers
-                .Select(u => new { u.Username, u.FullName, u.Role })
+            var query = _context.InspectionUsers
+                .Select(u => new { u.Username, u.FullName, u.Role });
+
+            var totalCount = await query.CountAsync();
+
+            var users = await query
+                .OrderBy(u => u.Username)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return Ok(users);
+            return Ok(new PagedResponse<object>
+            {
+                Items = users.Cast<object>().ToList(),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            });
         }
 
         // 8. 用户登录验证
@@ -387,6 +612,7 @@ namespace webapi.Controllers
             try
             {
                 var existing = await _context.InspectionSignatures
+                    .AsTracking()
                     .FirstOrDefaultAsync(s => s.DeviceModel == request.DeviceModel
                         && s.Year == request.Year
                         && s.Month == request.Month);
@@ -428,15 +654,28 @@ namespace webapi.Controllers
             }
         }
 
-        // 14. 获取点检资格人员列表
+        // 14. 获取点检资格人员列表，支持分页
         [HttpGet("operators/list")]
-        public async Task<IActionResult> GetOperatorList()
+        public async Task<IActionResult> GetOperatorList(int page = 1, int pageSize = 100)
         {
-            var operators = await _context.QualifiedInspectors
-                .Select(o => new { o.EmployeeId, o.LastName })
+            var query = _context.QualifiedInspectors
+                .Select(o => new { o.EmployeeId, o.LastName });
+
+            var totalCount = await query.CountAsync();
+
+            var operators = await query
+                .OrderBy(o => o.EmployeeId)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return Ok(operators);
+            return Ok(new PagedResponse<object>
+            {
+                Items = operators.Cast<object>().ToList(),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            });
         }
 
         // 15. 新增点检资格人员（支持单个/批量）
@@ -479,6 +718,7 @@ namespace webapi.Controllers
         public async Task<IActionResult> DeleteOperator(string employeeId)
         {
             var operator_ = await _context.QualifiedInspectors
+                .AsTracking()
                 .FirstOrDefaultAsync(o => o.EmployeeId == employeeId);
 
             if (operator_ == null)
@@ -508,38 +748,50 @@ namespace webapi.Controllers
             });
         }
 
-        // 18. 获取指定设备+年月的每日点检者姓
+        // 18. 获取指定设备+年月的每日点检者姓（窗口函数优化版）
         [HttpGet("operators/daily")]
         public async Task<IActionResult> GetDailyOperators(string deviceModel, int year, int month)
         {
             var startDate = new DateTime(year, month, 1);
-            var endDate = startDate.AddMonths(1).AddDays(-1);
+            var endDate = startDate.AddMonths(1).AddTicks(-1);
 
-            // 查询该设备当月所有记录，按日分组取最新记录的 employee_id
-            var records = await _context.InspectionRecords
-                .Where(r => r.DeviceModel == deviceModel
-                    && r.InspectionTime >= startDate
-                    && r.InspectionTime <= endDate)
+            // 用 ROW_NUMBER() 窗口函数在数据库端按日分组取最新记录
+            // 注意：列别名必须与 DailyOperatorRaw 属性名大小写一致，
+            // SqlQueryRaw 不做 snake_case→PascalCase 转换，只做大小写不敏感精确匹配
+            var sql = @"
+                SELECT day AS Day, employee_id AS EmployeeId FROM (
+                    SELECT
+                        DAY(inspection_time) as day,
+                        employee_id,
+                        ROW_NUMBER() OVER (PARTITION BY DAY(inspection_time) ORDER BY inspection_time DESC) as rn
+                    FROM inspection_records
+                    WHERE device_model = {0}
+                        AND inspection_time >= {1}
+                        AND inspection_time <= {2}
+                ) t WHERE rn = 1";
+
+            var dailyRecords = await _context.Database
+                .SqlQueryRaw<DailyOperatorRaw>(sql, deviceModel, startDate, endDate)
                 .ToListAsync();
 
-            // 按日分组，取每天最新记录
-            var dailyLatest = records
-                .GroupBy(r => r.InspectionTime.Day)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.OrderByDescending(r => r.InspectionTime).First().EmployeeId
-                );
-
             // JOIN qualified_inspectors 获取姓
-            var employeeIds = dailyLatest.Values.Distinct().ToList();
-            var inspectors = await _context.QualifiedInspectors
-                .Where(o => employeeIds.Contains(o.EmployeeId))
-                .ToDictionaryAsync(o => o.EmployeeId, o => o.LastName);
+            var employeeIds = dailyRecords.Select(r => r.EmployeeId).Distinct().ToList();
+            Dictionary<string, string> inspectors;
+            if (employeeIds.Count > 0)
+            {
+                inspectors = await _context.QualifiedInspectors
+                    .Where(o => employeeIds.Contains(o.EmployeeId))
+                    .ToDictionaryAsync(o => o.EmployeeId, o => o.LastName);
+            }
+            else
+            {
+                inspectors = new Dictionary<string, string>();
+            }
 
             var result = new Dictionary<string, string>();
-            foreach (var kvp in dailyLatest)
+            foreach (var dr in dailyRecords)
             {
-                result[kvp.Key.ToString()] = inspectors.TryGetValue(kvp.Value, out var name) ? name : "";
+                result[dr.Day.ToString()] = inspectors.TryGetValue(dr.EmployeeId, out var name) ? name : "";
             }
 
             return Ok(new
@@ -694,13 +946,144 @@ namespace webapi.Controllers
         public async Task<IActionResult> GetFrequencySummary(int year, int month)
         {
             var startDate = new DateTime(year, month, 1);
-            var endDate = startDate.AddMonths(1).AddDays(-1);
+            var endDate = startDate.AddMonths(1).AddTicks(-1);
 
             var daily   = await BuildFrequencyStats("日", year, month, startDate, endDate);
             var weekly  = await BuildFrequencyStats("周", year, month, startDate, endDate);
             var monthly = await BuildFrequencyStats("月", year, month, startDate, endDate);
 
             return Ok(new { daily, weekly, monthly });
+        }
+
+        // 13b. 获取未点检的必须点检设备 location 列表（供手机端使用）
+        /// <summary>
+        /// 按日/周/月频率，返回当前周期内未点检的"必须点检"设备的 device_location，
+        /// 合并为一个列表，每条标注频率。手机端在工号验证通过后及点检提交返回后调用。
+        /// </summary>
+        [HttpGet("uninspected-mandatory-locations")]
+        public async Task<IActionResult> GetUninspectedMandatoryLocations()
+        {
+            var now = DateTime.Now;
+            var today = now.Date;
+
+            // 日检周期：当天
+            var dayStart = today;
+            var dayEnd = today.AddDays(1).AddTicks(-1);
+
+            // 周检周期：本周一 ~ 本周日
+            int dayOfWeek = (int)now.DayOfWeek;
+            int diff = dayOfWeek == 0 ? 6 : dayOfWeek - 1;
+            var monday = today.AddDays(-diff);
+            var sunday = monday.AddDays(7).AddTicks(-1);
+
+            // 月检周期：当月 1 日 ~ 月末
+            var monthStart = new DateTime(now.Year, now.Month, 1);
+            var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
+
+            var uninspectedList = new List<object>();
+            var abnormalList = new List<object>();
+
+            async Task CollectData(string frequency, string label, DateTime periodStart, DateTime periodEnd)
+            {
+                // ===== 未点检：必须点检设备中无任何记录的 =====
+                var mandatoryModels = await _context.InspectionTemplates
+                    .Where(t => t.Frequency == frequency && t.IsMandatory)
+                    .Select(t => t.DeviceModel)
+                    .Distinct()
+                    .ToListAsync();
+
+                if (mandatoryModels.Count > 0)
+                {
+                    var inspectedModels = await _context.InspectionRecords
+                        .Where(r => mandatoryModels.Contains(r.DeviceModel)
+                                    && r.Frequency == frequency
+                                    && r.InspectionTime >= periodStart
+                                    && r.InspectionTime <= periodEnd)
+                        .Select(r => r.DeviceModel)
+                        .Distinct()
+                        .ToListAsync();
+
+                    var inspectedSet = new HashSet<string>(inspectedModels);
+                    var uninspectedModels = mandatoryModels
+                        .Where(m => !inspectedSet.Contains(m))
+                        .ToList();
+
+                    if (uninspectedModels.Count > 0)
+                    {
+                        var locations = await _context.Devices
+                            .Where(d => uninspectedModels.Contains(d.DeviceModel)
+                                        && d.DeviceLocation != null
+                                        && d.DeviceLocation != "")
+                            .Select(d => d.DeviceLocation!)
+                            .Distinct()
+                            .ToListAsync();
+
+                        foreach (var loc in locations)
+                            uninspectedList.Add(new { frequency = label, location = loc });
+                    }
+                }
+
+                // ===== 异常点检：全部设备（必须+选择）中有异常结果的 =====
+                var allDeviceModels = await _context.InspectionTemplates
+                    .Where(t => t.Frequency == frequency)
+                    .Select(t => t.DeviceModel)
+                    .Distinct()
+                    .ToListAsync();
+
+                if (allDeviceModels.Count > 0)
+                {
+                    var records = await _context.InspectionRecords
+                        .Where(r => allDeviceModels.Contains(r.DeviceModel)
+                                    && r.Frequency == frequency
+                                    && r.InspectionTime >= periodStart
+                                    && r.InspectionTime <= periodEnd)
+                        .ToListAsync();
+
+                    if (records.Count > 0)
+                    {
+                        var recordIds = records.Select(r => r.Id).ToList();
+                        var abnormalRecordIds = new HashSet<int>();
+                        const int batchSize = 500;
+                        for (int i = 0; i < recordIds.Count; i += batchSize)
+                        {
+                            var batch = recordIds.Skip(i).Take(batchSize).ToList();
+                            var abnormalIds = await _context.InspectionResults
+                                .Where(res => batch.Contains(res.RecordId) && !res.IsNormal)
+                                .Select(res => res.RecordId)
+                                .Distinct()
+                                .ToListAsync();
+                            foreach (var id in abnormalIds)
+                                abnormalRecordIds.Add(id);
+                        }
+
+                        if (abnormalRecordIds.Count > 0)
+                        {
+                            var abnormalModels = records
+                                .Where(r => abnormalRecordIds.Contains(r.Id))
+                                .Select(r => r.DeviceModel)
+                                .Distinct()
+                                .ToList();
+
+                            var locations = await _context.Devices
+                                .Where(d => abnormalModels.Contains(d.DeviceModel)
+                                            && d.DeviceLocation != null
+                                            && d.DeviceLocation != "")
+                                .Select(d => d.DeviceLocation!)
+                                .Distinct()
+                                .ToListAsync();
+
+                            foreach (var loc in locations)
+                                abnormalList.Add(new { frequency = label, location = loc });
+                        }
+                    }
+                }
+            }
+
+            await CollectData("日", "日检", dayStart, dayEnd);
+            await CollectData("周", "周检", monday, sunday);
+            await CollectData("月", "月检", monthStart, monthEnd);
+
+            return Ok(new { uninspectedList, abnormalList });
         }
 
         /// <summary>
@@ -717,17 +1100,24 @@ namespace webapi.Controllers
                 .ToListAsync();
 
             var totalDevices = devices.Count;
-            var inspectedCount = 0;
-            var abnormalCount = 0;
-            var uninspectedDevices = new List<string>();
-            var abnormalDeviceModels = new List<string>();
+            if (totalDevices == 0)
+            {
+                return new
+                {
+                    totalDevices = 0,
+                    inspectedDevices = 0,
+                    uninspectedDevices = 0,
+                    uninspectedDeviceModels = new List<string>(),
+                    abnormalDevices = 0,
+                    abnormalDeviceModels = new List<string>()
+                };
+            }
 
             // 按周期确定实际查询的时间范围
             var now = DateTime.Now;
             DateTime periodStart, periodEnd;
             if (frequency == "日")
             {
-                // 日点检：只查今天（若所选月份不包含今天，则查月末最后一天）
                 var today = now.Date;
                 if (today >= startDate && today <= endDate)
                 {
@@ -742,10 +1132,8 @@ namespace webapi.Controllers
             }
             else if (frequency == "周")
             {
-                // 周点检：查本周一至周日（若所选月份不包含本周，则查月末最后一周）
-                // DayOfWeek: Sunday=0, Monday=1, ..., Saturday=6
                 int dayOfWeek = (int)now.DayOfWeek;
-                int diff = dayOfWeek == 0 ? 6 : dayOfWeek - 1; // 周日 → 回退6天到上周一
+                int diff = dayOfWeek == 0 ? 6 : dayOfWeek - 1;
                 var monday = now.Date.AddDays(-diff);
                 if (monday < startDate) monday = startDate;
                 var sunday = monday.AddDays(7).AddTicks(-1);
@@ -755,69 +1143,126 @@ namespace webapi.Controllers
             }
             else
             {
-                // 月点检：查整月
                 periodStart = startDate;
                 periodEnd = endDate;
             }
 
+            // ===== 批量查询 1：所有设备的全部点检项目（一次 SQL，含 IsMandatory 标记） =====
+            var allItems = await _context.InspectionTemplates
+                .Where(t => devices.Contains(t.DeviceModel)
+                            && t.Frequency == frequency)
+                .Select(t => new { t.DeviceModel, t.ItemName, t.IsMandatory })
+                .ToListAsync();
+
+            // 按设备分组 — 全部项目
+            var allItemsByDevice = allItems
+                .GroupBy(t => t.DeviceModel)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            // 按设备分组 — 仅必须项目
+            var mandatoryByDevice = allItems
+                .Where(t => t.IsMandatory)
+                .GroupBy(t => t.DeviceModel)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ItemName).ToHashSet());
+
+            // ===== 批量查询 2：所有设备在周期内的记录（一次 SQL） =====
+            var allRecords = await _context.InspectionRecords
+                .Where(r => devices.Contains(r.DeviceModel)
+                            && r.Frequency == frequency
+                            && r.InspectionTime >= periodStart
+                            && r.InspectionTime <= periodEnd)
+                .ToListAsync();
+
+            // 按设备分组
+            var recordsByDevice = allRecords
+                .GroupBy(r => r.DeviceModel)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            // ===== 批量查询 3：所有记录的结果明细（一次 SQL） =====
+            var allRecordIds = allRecords.Select(r => r.Id).ToList();
+            List<InspectionResult> allResults;
+            if (allRecordIds.Count > 0)
+            {
+                // 分批处理 IN 子句（防止 ID 过多导致 SQL 过大）
+                allResults = new List<InspectionResult>();
+                const int batchSize = 500;
+                for (int i = 0; i < allRecordIds.Count; i += batchSize)
+                {
+                    var batch = allRecordIds.Skip(i).Take(batchSize).ToList();
+                    var batchResults = await _context.InspectionResults
+                        .Where(res => batch.Contains(res.RecordId))
+                        .ToListAsync();
+                    allResults.AddRange(batchResults);
+                }
+            }
+            else
+            {
+                allResults = new List<InspectionResult>();
+            }
+
+            // 按 recordId 分组
+            var resultsByRecordId = allResults
+                .GroupBy(res => res.RecordId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            // ===== 内存中按设备统计 =====
+            var inspectedCount = 0;
+            var abnormalCount = 0;
+            var uninspectedDevices = new List<string>();
+            var abnormalDeviceModels = new List<string>();
+
             foreach (var device in devices)
             {
-                // 获取该设备在该频率下的所有必须点检项目
-                var mandatoryItems = await _context.InspectionTemplates
-                    .Where(t => t.DeviceModel == device
-                        && t.Frequency == frequency
-                        && t.IsMandatory)
-                    .Select(t => t.ItemName)
-                    .ToListAsync();
-
-                // 该设备在该频率下无必须点检项目 → 跳过统计
-                if (mandatoryItems.Count == 0)
+                // 获取该设备的全部项目（含必须+选择）
+                if (!allItemsByDevice.TryGetValue(device, out var deviceAllItems) || deviceAllItems.Count == 0)
                     continue;
 
-                // 获取该设备在当前周期内的记录（日=当天，周=本周，月=整月）
-                var records = await _context.InspectionRecords
-                    .Where(r => r.DeviceModel == device
-                        && r.Frequency == frequency
-                        && r.InspectionTime >= periodStart
-                        && r.InspectionTime <= periodEnd)
-                    .ToListAsync();
+                bool hasMandatory = mandatoryByDevice.TryGetValue(device, out var mandatorySet) && mandatorySet.Count > 0;
 
-                if (records.Count == 0)
+                // 获取该设备在周期内的记录
+                if (!recordsByDevice.TryGetValue(device, out var deviceRecords) || deviceRecords.Count == 0)
                 {
-                    uninspectedDevices.Add(device);
+                    // 必须点检设备无记录 → 未点检；纯选择点检设备无记录 → 不统计
+                    if (hasMandatory)
+                        uninspectedDevices.Add(device);
                     continue;
                 }
 
-                // 收集本周期所有记录的 InspectionResult item_name
-                var recordIds = records.Select(r => r.Id).ToList();
-                var results = await _context.InspectionResults
-                    .Where(res => recordIds.Contains(res.RecordId))
-                    .ToListAsync();
-
-                var resultItemNames = results
-                    .Select(res => res.ItemName)
-                    .Distinct()
-                    .ToList();
-
-                var resultSet = new HashSet<string>(resultItemNames);
-
-                // 检查是否所有必须点检项目都有结果
-                var allMandatoryInspected = mandatoryItems.All(item => resultSet.Contains(item));
-
-                if (!allMandatoryInspected)
+                // 收集本周期所有记录的 result item_name + 异常标记
+                var deviceResultItemNames = new HashSet<string>();
+                var anyAbnormal = false;
+                foreach (var record in deviceRecords)
                 {
-                    // 有必须点检项目漏检 → 未点检
-                    uninspectedDevices.Add(device);
+                    if (resultsByRecordId.TryGetValue(record.Id, out var results))
+                    {
+                        foreach (var r in results)
+                        {
+                            deviceResultItemNames.Add(r.ItemName);
+                            if (!r.IsNormal) anyAbnormal = true;
+                        }
+                    }
                 }
-                else if (results.Any(r => !r.IsNormal))
+
+                // 异常检查 — 所有设备（必须+选择）都计入异常
+                if (anyAbnormal)
                 {
-                    // 所有必须项目都做了，但有项目异常（×）→ 异常点检
                     abnormalCount++;
                     abnormalDeviceModels.Add(device);
+                    continue;
+                }
+
+                if (hasMandatory)
+                {
+                    // 必须点检设备：检查是否所有必须项都已覆盖
+                    var allMandatoryInspected = mandatorySet.All(item => deviceResultItemNames.Contains(item));
+                    if (!allMandatoryInspected)
+                        uninspectedDevices.Add(device);
+                    else
+                        inspectedCount++;
                 }
                 else
                 {
-                    // 所有必须项目正常 → 已点检
+                    // 纯选择点检设备，有记录且无异常 → 计入已点检
                     inspectedCount++;
                 }
             }
@@ -842,7 +1287,7 @@ namespace webapi.Controllers
             try
             {
                 var startDate = new DateTime(year, month, 1);
-                var endDate = startDate.AddMonths(1).AddDays(-1);
+                var endDate = startDate.AddMonths(1).AddTicks(-1);
 
                 // 所有设备型号（从模板表去重）
                 var allDevices = await _context.InspectionTemplates
@@ -901,6 +1346,67 @@ namespace webapi.Controllers
             }
         }
 
+        // 获取当月完全未点检的设备清单（所有频率下均无记录）
+        [HttpGet("uninspected-monthly")]
+        public async Task<IActionResult> GetUninspectedMonthly(int year, int month)
+        {
+            try
+            {
+                var monthStart = new DateTime(year, month, 1);
+                var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
+
+                // 所有有模板的设备型号
+                var allDeviceModels = await _context.InspectionTemplates
+                    .Select(t => t.DeviceModel)
+                    .Distinct()
+                    .ToListAsync();
+
+                // 当月有任意记录的设备型号
+                var inspectedModels = await _context.InspectionRecords
+                    .Where(r => r.InspectionTime >= monthStart
+                             && r.InspectionTime <= monthEnd)
+                    .Select(r => r.DeviceModel)
+                    .Distinct()
+                    .ToListAsync();
+
+                var inspectedSet = new HashSet<string>(inspectedModels);
+
+                // 当月完全无记录的设备
+                var uninspectedModels = allDeviceModels
+                    .Where(m => !inspectedSet.Contains(m))
+                    .ToList();
+
+                // JOIN devices 获取 location
+                var uninspectedDevices = new List<UninspectedDeviceItem>();
+                if (uninspectedModels.Count > 0)
+                {
+                    uninspectedDevices = await _context.Devices
+                        .Where(d => uninspectedModels.Contains(d.DeviceModel))
+                        .Select(d => new UninspectedDeviceItem
+                        {
+                            DeviceModel = d.DeviceModel,
+                            DeviceName = d.DeviceName,
+                            DeviceLocation = d.DeviceLocation ?? ""
+                        })
+                        .OrderBy(d => d.DeviceLocation)
+                        .ThenBy(d => d.DeviceModel)
+                        .ToListAsync();
+                }
+
+                return Ok(new UninspectedMonthlyResponse
+                {
+                    Year = year,
+                    Month = month,
+                    TotalDevices = allDeviceModels.Count,
+                    UninspectedCount = uninspectedDevices.Count,
+                    UninspectedDevices = uninspectedDevices
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
 
         // 15. 导入计划：上传 Excel，提取机种编码，匹配 dongtai 设备并更新 is_mandatory
         /// <summary>
@@ -1090,11 +1596,13 @@ namespace webapi.Controllers
     // 临时 DTO 用于数据传输
     public class MonthlyRecordDto
     {
+        public int RecordId { get; set; }
         public string ItemName { get; set; } = string.Empty;
         public int InspectionDay { get; set; }
         public string ResultValue { get; set; } = string.Empty;
         public string Remark { get; set; } = string.Empty;
         public bool IsNormal { get; set; }
+        public string Status { get; set; } = string.Empty;
     }
 
 
@@ -1103,6 +1611,7 @@ namespace webapi.Controllers
         public string EmployeeId { get; set; } = string.Empty;
         public string DeviceModel { get; set; } = string.Empty;
         public DateTime InspectionMonth { get; set; }
+        public string Frequency { get; set; } = "日";
         public List<SaveRecordItem> Results { get; set; } = new();
     }
 
@@ -1111,6 +1620,7 @@ namespace webapi.Controllers
         public int Day { get; set; }
         public string ItemName { get; set; } = string.Empty;
         public string ResultValue { get; set; } = string.Empty;
+        public bool IsNormal { get; set; }
         public string Remark { get; set; } = string.Empty;
     }
     public class SaveSignaturesRequest
@@ -1157,6 +1667,29 @@ namespace webapi.Controllers
 
         /// <summary>更新的 inspection_templates 条数</summary>
         public int TemplatesUpdated { get; set; }
+    }
+
+    // 用于 SqlQueryRaw 的临时映射类
+    public class DailyOperatorRaw
+    {
+        public int Day { get; set; }
+        public string EmployeeId { get; set; } = string.Empty;
+    }
+
+    public class UninspectedMonthlyResponse
+    {
+        public int Year { get; set; }
+        public int Month { get; set; }
+        public int TotalDevices { get; set; }
+        public int UninspectedCount { get; set; }
+        public List<UninspectedDeviceItem> UninspectedDevices { get; set; } = new();
+    }
+
+    public class UninspectedDeviceItem
+    {
+        public string DeviceModel { get; set; } = string.Empty;
+        public string DeviceName { get; set; } = string.Empty;
+        public string DeviceLocation { get; set; } = string.Empty;
     }
 
 }

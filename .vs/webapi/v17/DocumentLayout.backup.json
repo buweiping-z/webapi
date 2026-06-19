@@ -1,0 +1,220 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\33215\\source\\repos\\webapi\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\properties\\launchsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:properties\\launchsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\controllers\\inspectioncontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:controllers\\inspectioncontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\data\\appdbcontext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:data\\appdbcontext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\weatherforecast.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:weatherforecast.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\models\\inspectionuser.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:models\\inspectionuser.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\models\\inspection_signature.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:models\\inspection_signature.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\models\\inspectiontemplate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:models\\inspectiontemplate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\models\\inspectionrecord.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:models\\inspectionrecord.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\models\\inspectionresult.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:models\\inspectionresult.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|c:\\users\\33215\\source\\repos\\webapi\\controllers\\weatherforecastcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7665A0F5-22BD-46E9-B033-CF4E72219C21}|webapi.csproj|solutionrelative:controllers\\weatherforecastcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 4,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "launchSettings.json",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Properties\\launchSettings.json",
+              "RelativeDocumentMoniker": "Properties\\launchSettings.json",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Properties\\launchSettings.json",
+              "RelativeToolTip": "Properties\\launchSettings.json",
+              "ViewState": "AgIAAAYAAAAAAAAAAAAAABoAAABFAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-06-08T14:39:48.884Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "InspectionUser.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\InspectionUser.cs",
+              "RelativeDocumentMoniker": "Models\\InspectionUser.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\InspectionUser.cs",
+              "RelativeToolTip": "Models\\InspectionUser.cs",
+              "ViewState": "AgIAAA4AAAAAAAAAAAAQwAsAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-08T13:58:15.036Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "InspectionTemplate.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\InspectionTemplate.cs",
+              "RelativeDocumentMoniker": "Models\\InspectionTemplate.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\InspectionTemplate.cs",
+              "RelativeToolTip": "Models\\InspectionTemplate.cs",
+              "ViewState": "AgIAAAMAAAAAAAAAAAAAABgAAAAeAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-06T22:48:10.296Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "InspectionController.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Controllers\\InspectionController.cs",
+              "RelativeDocumentMoniker": "Controllers\\InspectionController.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Controllers\\InspectionController.cs",
+              "RelativeToolTip": "Controllers\\InspectionController.cs",
+              "ViewState": "AgIAALIAAAAAAAAAAAAgwLcBAAAnAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-05T12:51:09.264Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Program.cs",
+              "RelativeDocumentMoniker": "Program.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Program.cs",
+              "RelativeToolTip": "Program.cs",
+              "ViewState": "AgIAAAYAAAAAAAAAAAAAABgAAAAXAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-05T12:47:45.465Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\appsettings.json",
+              "RelativeDocumentMoniker": "appsettings.json",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\appsettings.json",
+              "RelativeToolTip": "appsettings.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAfAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-06-05T12:46:35.326Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "AppDbContext.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Data\\AppDbContext.cs",
+              "RelativeDocumentMoniker": "Data\\AppDbContext.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Data\\AppDbContext.cs",
+              "RelativeToolTip": "Data\\AppDbContext.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAACEAAAAwAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-05T12:45:25.208Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 11,
+              "Title": "WeatherForecastController.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Controllers\\WeatherForecastController.cs",
+              "RelativeDocumentMoniker": "Controllers\\WeatherForecastController.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Controllers\\WeatherForecastController.cs",
+              "RelativeToolTip": "Controllers\\WeatherForecastController.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABcAAABNAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-05T12:43:48.58Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "WeatherForecast.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\WeatherForecast.cs",
+              "RelativeDocumentMoniker": "WeatherForecast.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\WeatherForecast.cs",
+              "RelativeToolTip": "WeatherForecast.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-05T13:48:12.847Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "inspection_signature.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\inspection_signature.cs",
+              "RelativeDocumentMoniker": "Models\\inspection_signature.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\inspection_signature.cs",
+              "RelativeToolTip": "Models\\inspection_signature.cs",
+              "ViewState": "AgIAAAIAAAAAAAAAAAAqwCAAAAAFAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-08T12:58:30.097Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "InspectionRecord.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\InspectionRecord.cs",
+              "RelativeDocumentMoniker": "Models\\InspectionRecord.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\InspectionRecord.cs",
+              "RelativeToolTip": "Models\\InspectionRecord.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAB4AAAADAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-05T12:41:49.082Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "InspectionResult.cs",
+              "DocumentMoniker": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\InspectionResult.cs",
+              "RelativeDocumentMoniker": "Models\\InspectionResult.cs",
+              "ToolTip": "C:\\Users\\33215\\source\\repos\\webapi\\Models\\InspectionResult.cs",
+              "RelativeToolTip": "Models\\InspectionResult.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABkAAAA/AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-06T22:48:44.267Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

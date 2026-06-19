@@ -2,37 +2,117 @@ using Microsoft.EntityFrameworkCore;
 using Pomelo.EntityFrameworkCore.MySql;
 using webapi.Data;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    // é™æ€æ–‡ä»¶æ ¹ç›®å½•è®¾ä¸º htmlï¼ˆè€Œéé»˜è®¤çš„ wwwrootï¼‰
+    WebRootPath = "html"
+});
 
-// 1. Ìí¼Ó CORS ²ßÂÔ (·ÅÔÚ AddDbContext Ö®Ç°»òÖ®ºó¶¼¿ÉÒÔ)
+// å›ºå®šç›‘å¬åœ°å€ï¼ˆç”Ÿäº§ç¯å¢ƒæ—  launchSettings.json æ—¶é»˜è®¤ 5000ï¼Œè¿™é‡Œç»Ÿä¸€ä¸º 8800ï¼‰
+builder.WebHost.UseUrls("http://0.0.0.0:8800");
+
+// 1. é…ç½® CORS ç­–ç•¥ (æ”¾åœ¨ AddDbContext ä¹‹å‰æˆ–ä¹‹åéƒ½å¯ä»¥)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
         policy =>
         {
-            // ÔÊĞíËùÓĞÀ´Ô´¡¢ËùÓĞÇëÇóÍ·ºÍËùÓĞÇëÇó·½·¨
             policy.AllowAnyOrigin()
                   .AllowAnyMethod()
                   .AllowAnyHeader();
         });
 });
 
-// 2. ÅäÖÃÊı¾İ¿âÉÏÏÂÎÄ
+// 2. é…ç½®æ•°æ®åº“ä¸Šä¸‹æ–‡
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(builder.Configuration.GetConnectionString("DefaultConnection"),
     ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("DefaultConnection"))));
 
-// 3. Ìí¼Ó¿ØÖÆÆ÷ºÍ Swagger ·şÎñ
+// 3. æ³¨å†Œåå°æœåŠ¡
+builder.Services.AddHostedService<webapi.Services.PhotoCleanupService>();
+
+// 4. æ·»åŠ æ§åˆ¶å™¨ + Swagger æ”¯æŒ
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// 4. ÆôÓÃ CORS ÖĞ¼ä¼ş (Ë³ĞòºÜÖØÒª£ºÒªÔÚ UseHttpsRedirection ºÍ UseAuthorization Ö®Ç°)
+// 4. å¯åŠ¨æ—¶è‡ªåŠ¨åº”ç”¨æ•°æ®åº“è¿ç§»ï¼ˆå…¶ä»–ç”µè„‘æ— éœ€æ‰‹åŠ¨ dotnet ef database updateï¼‰
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+
+    // 5a. è‡ªåŠ¨åº”ç”¨ç…§ç‰‡åŠŸèƒ½çš„æ•°æ®åº“å˜æ›´ï¼ˆå¹‚ç­‰ SQLï¼‰
+    using (var conn = db.Database.GetDbConnection())
+    {
+        await conn.OpenAsync();
+        using var cmd = conn.CreateCommand();
+
+        // æ·»åŠ  require_photo åˆ—ï¼ˆå¦‚æœä¸å­˜åœ¨ï¼‰
+        cmd.CommandText = @"
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'inspection_templates'
+              AND COLUMN_NAME = 'require_photo'";
+        var colExists = Convert.ToInt64(await cmd.ExecuteScalarAsync()) > 0;
+        if (!colExists)
+        {
+            cmd.CommandText = "ALTER TABLE inspection_templates ADD COLUMN require_photo TINYINT(1) NOT NULL DEFAULT 0";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // æ‰©å±• inspection_records.status åˆ—é•¿åº¦ï¼ˆä» VARCHAR(10) â†’ VARCHAR(20) ä»¥å®¹çº³ "pending"ï¼‰
+        cmd.CommandText = @"
+            SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'inspection_records'
+              AND COLUMN_NAME = 'status'";
+        var currentLen = await cmd.ExecuteScalarAsync();
+        if (currentLen != DBNull.Value && Convert.ToInt32(currentLen) < 20)
+        {
+            cmd.CommandText = "ALTER TABLE inspection_records MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'submitted'";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // åˆ›å»º inspection_photos è¡¨ï¼ˆå¦‚æœä¸å­˜åœ¨ï¼‰
+        cmd.CommandText = @"
+            SELECT COUNT(*) FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'inspection_photos'";
+        var tableExists = Convert.ToInt64(await cmd.ExecuteScalarAsync()) > 0;
+        if (!tableExists)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE inspection_photos (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    record_id INT NOT NULL,
+                    item_name VARCHAR(100) NOT NULL,
+                    photo_path VARCHAR(500) NOT NULL,
+                    thumbnail_path VARCHAR(500) DEFAULT NULL,
+                    photo_order INT NOT NULL DEFAULT 0,
+                    uploaded_by VARCHAR(50) NOT NULL DEFAULT '',
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_photos_record (record_id),
+                    INDEX idx_photos_item (record_id, item_name),
+                    CONSTRAINT fk_photos_record FOREIGN KEY (record_id)
+                        REFERENCES inspection_records(id) ON DELETE CASCADE
+                )";
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+}
+
+// 5. ä½¿ç”¨ CORS ä¸­é—´ä»¶
 app.UseCors("AllowAll");
 
-// 5. ÅäÖÃ¿ª·¢»·¾³
+// 6. é™æ€æ–‡ä»¶æœåŠ¡ â€” ä» html/ ç›®å½•æä¾›å‰ç«¯é¡µé¢
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+// 7. é…ç½®ç®¡é“
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

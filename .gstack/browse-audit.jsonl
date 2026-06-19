@@ -1,0 +1,17 @@
+{"ts":"2026-06-13T13:13:59.330Z","cmd":"goto","args":"http://localhost:8080/","origin":"http://localhost:8080/","durationMs":510,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:01.786Z","cmd":"screenshot","args":"C:/Users/33215/AppData/Local/Temp/inspection-page-test.png","origin":"http://localhost:8080/","durationMs":357,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:15.210Z","cmd":"screenshot","args":"C:/Users/33215/AppData/Local/Temp/inspect-mobile.png --width 375","origin":"http://localhost:8080/","durationMs":0,"status":"error","hasCookies":false,"mode":"launched","error":"Unknown screenshot flag: --width"}
+{"ts":"2026-06-13T13:14:15.274Z","cmd":"screenshot","args":"C:/Users/33215/AppData/Local/Temp/inspect-tablet.png --width 768","origin":"http://localhost:8080/","durationMs":0,"status":"error","hasCookies":false,"mode":"launched","error":"Unknown screenshot flag: --width"}
+{"ts":"2026-06-13T13:14:15.338Z","cmd":"screenshot","args":"C:/Users/33215/AppData/Local/Temp/inspect-desktop.png --width 1440","origin":"http://localhost:8080/","durationMs":0,"status":"error","hasCookies":false,"mode":"launched","error":"Unknown screenshot flag: --width"}
+{"ts":"2026-06-13T13:14:30.227Z","cmd":"viewport","args":"375x812","origin":"http://localhost:8080/","durationMs":4,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:31.353Z","cmd":"screenshot","args":"C:/Users/33215/AppData/Local/Temp/inspect-mobile.png","origin":"http://localhost:8080/","durationMs":39,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:31.422Z","cmd":"viewport","args":"768x1024","origin":"http://localhost:8080/","durationMs":2,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:32.591Z","cmd":"screenshot","args":"C:/Users/33215/AppData/Local/Temp/inspect-tablet.png","origin":"http://localhost:8080/","durationMs":67,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:32.663Z","cmd":"viewport","args":"1440x900","origin":"http://localhost:8080/","durationMs":2,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:33.879Z","cmd":"screenshot","args":"C:/Users/33215/AppData/Local/Temp/inspect-desktop.png","origin":"http://localhost:8080/","durationMs":97,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:44.292Z","cmd":"viewport","args":"1440x900","origin":"http://localhost:8080/","durationMs":0,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:44.358Z","cmd":"text","args":"h1","origin":"http://localhost:8080/","durationMs":2,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:44.427Z","cmd":"is","args":"visible #loginModal","origin":"http://localhost:8080/","durationMs":4,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:44.490Z","cmd":"is","args":"visible #deviceSelect","origin":"http://localhost:8080/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:44.555Z","cmd":"text","args":"#tableContainer","origin":"http://localhost:8080/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-13T13:14:44.622Z","cmd":"console","args":"--errors","origin":"http://localhost:8080/","durationMs":0,"status":"ok","hasCookies":false,"mode":"launched"}

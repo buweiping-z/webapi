@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>设备点检管理系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 100%;
+            overflow-x: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            color: #333;
+        }
+        
+        /* 右上角印章区域 */
+        .signature-corner {
+            position: absolute;
+            top: 0;
+            right: 0;
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        /* 单个印章容器 */
+        .stamp-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .stamp-role-label {
+            font-size: 16px;
+            color: #666;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        /* CSS 电子印章 — 纯样式，无图片，PDF 导出无污染 */
+        .stamp-seal {
+            width: 70px;
+            height: 70px;
+            border: 3px solid #C41E1E;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: rgba(196,30,30,0.04);
+            box-shadow: 0 0 0 2px rgba(196,30,30,0.15);
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        /* 内圈虚线 */
+        .stamp-seal::before {
+            content: '';
+            position: absolute;
+            top: 5px; left: 5px; right: 5px; bottom: 5px;
+            border: 1px dashed rgba(196,30,30,0.3);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* ★ 水印 */
+        .stamp-seal::after {
+            content: '★';
+            position: absolute;
+            font-size: 22px;
+            color: rgba(196,30,30,0.12);
+            pointer-events: none;
+        }
+
+        .stamp-name {
+            font-size: 15px;
+            font-weight: bold;
+            color: #C41E1E;
+            z-index: 1;
+            text-align: center;
+            line-height: 1.3;
+            max-width: 55px;
+            word-break: keep-all;
+            letter-spacing: 4px;
+            writing-mode: vertical-rl;
+        }
+
+        /* 旋转 */
+        .stamp-item:nth-child(1) .stamp-seal { transform: rotate(-3deg); }
+        .stamp-item:nth-child(2) .stamp-seal { transform: rotate(2deg); }
+        .stamp-item:nth-child(3) .stamp-seal { transform: rotate(-1deg); }
+
+        /* 未签名 */
+        .stamp-seal.unsigned {
+            border-color: #bbb;
+            background: rgba(0,0,0,0.02);
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.04);
+        }
+        .stamp-seal.unsigned::before { border-color: rgba(0,0,0,0.08); }
+        .stamp-seal.unsigned::after { color: rgba(0,0,0,0.05); }
+        .stamp-seal.unsigned .stamp-name { color: #bbb; font-size: 11px; letter-spacing: 1px; writing-mode: vertical-rl; }
+
+        
+        .filters {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            margin-top: 60px;
+            flex-wrap: wrap;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            align-items: flex-end;
+        }
+        
+        .filter-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .filter-item label {
+            font-weight: bold;
+            color: #555;
+            font-size: 12px;
+        }
+        
+        .filter-item select, .filter-item input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 150px;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            min-width: 80px;
+        }
+
+        .btn-nav {
+            min-width: 36px;
+            padding: 8px 10px;
+            background: #607D8B;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .btn-nav:hover {
+            background: #455A64;
+        }
+        
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+            width: 100px;
+            height: 38px;
+            padding: 0;
+        }
+
+        .btn-primary:hover {
+            background: #45a049;
+        }
+
+        .btn-confirm {
+            background: #FF9800;
+            color: white;
+            width: 100px;
+            height: 38px;
+            padding: 0;
+        }
+
+        .btn-confirm:hover {
+            background: #e68900;
+        }
+
+        .btn-all-sign {
+            background: #9C27B0;
+            color: white;
+            width: 100px;
+            height: 38px;
+            padding: 0;
+        }
+
+        .btn-all-sign:hover {
+            background: #7B1FA2;
+        }
+
+        .btn-pdf {
+            background: #2196F3;
+            color: white;
+            width: 100px;
+            height: 38px;
+            padding: 0;
+        }
+
+        .btn-pdf:hover {
+            background: #1976D2;
+        }
+
+        .btn-export-all {
+            background: #009688;
+            color: white;
+            width: 100px;
+            height: 38px;
+            padding: 0;
+        }
+
+        .btn-export-all:hover {
+            background: #00796B;
+        }
+
+        /* 打印/PDF导出样式 */
+        @media print {
+            @page {
+                size: A3 landscape;
+                margin: 8mm;
+            }
+            body {
+                background: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+                border-radius: 0;
+                padding: 5px;
+                max-width: none;
+                overflow: visible;
+            }
+            .filters, .user-bar, .status-bar, .error-bar, .footer, .btn, .btn-nav, .logout-btn,
+            .btn-all-sign, .btn-export-all, #summaryBar {
+                display: none !important;
+            }
+            /* 显示打印专用元素 */
+            .print-only {
+                display: block !important;
+            }
+            /* 隐藏未点检行 */
+            .row-uninspected {
+                display: none !important;
+            }
+            .signature-corner {
+                position: static;
+                display: flex;
+                justify-content: flex-end;
+                gap: 16px;
+                margin-bottom: 10px;
+            }
+            .stamp-seal {
+                width: 55px;
+                height: 55px;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .stamp-role-label {
+                font-size: 9px;
+            }
+            .stamp-name {
+                font-size: 12px;
+            }
+            /* 表格容器缩放适配纸张 */
+            #tableContainer {
+                overflow: visible !important;
+                transform-origin: top left;
+            }
+            #tableContainer > div {
+                overflow: visible !important;
+            }
+            table {
+                font-size: 10px;
+                page-break-inside: auto;
+                border-collapse: collapse;
+            }
+            th, td {
+                padding: 3px 4px;
+                min-width: auto !important;
+            }
+            th {
+                position: static;
+            }
+            thead {
+                display: table-header-group;
+            }
+            tr {
+                page-break-inside: avoid;
+            }
+            .result-normal, .result-abnormal {
+                font-size: 15px;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+        
+        /* 登录模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 350px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .modal-content h3 {
+            margin-bottom: 20px;
+            text-align: center;
+            color: #333;
+        }
+        
+        .modal-content .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .modal-content .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        .modal-content .form-group select,
+        .modal-content .form-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .modal-buttons button {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            min-width: 80px;
+        }
+        
+        .btn-login-modal {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-login-modal:hover {
+            background: #45a049;
+        }
+        
+        .btn-cancel-login {
+            background: #9E9E9E;
+            color: white;
+        }
+        
+        .btn-cancel-login:hover {
+            background: #757575;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 12px;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        
+        th {
+            background: #f2f2f2;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .result-normal {
+            background: #d4edda;
+            color: #155724;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .result-abnormal {
+            background: #f8d7da;
+            color: #721c24;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        /* 打印专用：默认隐藏 */
+        .print-only {
+            display: none;
+        }
+
+        /* 整行未点检（所有日期都是 /） */
+        .row-uninspected {
+            /* 屏幕正常显示 */
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 16px;
+            color: #666;
+        }
+        
+        .footer {
+            margin-top: 20px;
+            padding: 20px;
+            border-top: 1px solid #eee;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .status-bar {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #1976d2;
+        }
+        
+        .error-bar {
+            margin-top: 10px;
+            padding: 10px;
+            background: #ffebee;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #c62828;
+        }
+        
+        .user-bar {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e8f5e9;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #2e7d32;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logout-btn {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            min-width: 80px;
+        }
+        
+        .logout-btn:hover {
+            background: #d32f2f;
+        }
+        
+        @media (max-width: 768px) {
+            table {
+                font-size: 10px;
+            }
+            th, td {
+                padding: 4px;
+            }
+            .filter-item select, .filter-item input {
+                min-width: 120px;
+            }
+            .signature-corner {
+                position: static;
+                margin-bottom: 10px;
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+            .stamp-seal {
+                width: 55px;
+                height: 55px;
+            }
+            .stamp-name {
+                font-size: 12px;
+            }
+            .filters {
+                margin-top: 10px;
+            }
+        }
+
+        /* 月度摘要统计卡片 */
+        .summary-bar {
+            display: flex;
+            gap: 12px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+            align-items: stretch;
+        }
+        .summary-card {
+            background: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px 18px;
+            text-align: center;
+            min-width: 100px;
+            flex: 1;
+        }
+        .summary-card .summary-label {
+            display: block;
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .summary-card .summary-value {
+            display: block;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .summary-card .summary-value-small {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            line-height: 1.6;
+        }
+        .summary-card.inspected {
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .summary-card.inspected .summary-value {
+            color: #155724;
+        }
+        .summary-card.uninspected {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .summary-card.uninspected .summary-value {
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>设备治工具点检表</h1>
+            <!-- 打印时显示设备信息 -->
+            <div id="printDeviceInfo" class="print-only" style="text-align:center;font-size:14px;color:#333;margin-bottom:5px;"></div>
+            <!-- 右上角印章区域 -->
+            <div class="signature-corner" id="signatureCorner">
+                <!-- 承认印章 -->
+                <div class="stamp-item">
+                    <span class="stamp-role-label">承 认</span>
+                    <div class="stamp-seal unsigned" id="stampApprover">
+                        <span class="stamp-name" id="approverText">未签</span>
+                    </div>
+                </div>
+                <!-- 确认印章 -->
+                <div class="stamp-item">
+                    <span class="stamp-role-label">确 认</span>
+                    <div class="stamp-seal unsigned" id="stampConfirmer">
+                        <span class="stamp-name" id="confirmerText">未签</span>
+                    </div>
+                </div>
+                <!-- 担当印章 -->
+                <div class="stamp-item">
+                    <span class="stamp-role-label">担 当</span>
+                    <div class="stamp-seal unsigned" id="stampOperator">
+                        <span class="stamp-name" id="operatorText">未签</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <div class="filter-item">
+                <label>设备名称：</label>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <select id="deviceSelect" style="flex: 1;">
+                        <option value="">请选择设备</option>
+                    </select>
+                    <button class="btn btn-nav" onclick="prevDevice()" title="上一个设备">▲</button>
+                    <button class="btn btn-nav" onclick="nextDevice()" title="下一个设备">▼</button>
+                </div>
+            </div>
+            <div class="filter-item">
+                <label>点检年份：</label>
+                <select id="yearSelect"></select>
+            </div>
+            <div class="filter-item">
+                <label>点检月份：</label>
+                <select id="monthSelect"></select>
+            </div>
+            <div class="filter-item">
+                <label>设备总数：</label>
+                <input type="text" id="totalDeviceCount" value="0" readonly style="background:#f0f0f0; color:#333; font-weight:bold; text-align:center; width:80px;">
+            </div>
+            <div class="filter-item">
+                <label>已签设备：</label>
+                <input type="text" id="signedDeviceCount" value="0" readonly style="background:#f0f0f0; color:#333; font-weight:bold; text-align:center; width:80px;">
+            </div>
+            <div class="filter-item" style="flex-direction: row; align-items: flex-end; gap: 10px;">
+                <button class="btn btn-primary" onclick="loadData()">查询</button>
+                <button class="btn btn-confirm" onclick="confirmSign()" id="confirmBtn">确认</button>
+                <button class="btn btn-all-sign" onclick="batchSignAll()" id="batchSignBtn">一键确认</button>
+                <button class="btn btn-pdf" onclick="exportPDF()">导出PDF</button>
+                <button class="btn btn-export-all" onclick="batchExportAll()" id="batchExportBtn">一键导出</button>
+            </div>
+        </div>
+
+        <!-- 用户信息栏 -->
+        <div id="userBar" class="user-bar" style="display:none;">
+            <span id="userInfo"></span>
+            <span id="inspectorSpan" style="display:none; margin-left: 20px;">
+                点检者：
+                <select id="inspectorSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid #ddd;" onchange="onInspectorChange()">
+                    <option value="">选择点检者</option>
+                </select>
+            </span>
+            <button class="logout-btn" onclick="logout()">退出登录</button>
+        </div>
+        
+        <div id="statusBar" class="status-bar" style="display:none;"></div>
+        <div id="errorBar" class="error-bar" style="display:none;"></div>
+        
+        <div id="tableContainer">
+            <div class="loading">请先登录，然后选择设备、年份/月份并点击查询</div>
+        </div>
+
+        <!-- 按频率统计摘要 -->
+        <div id="frequencySummaryBar" style="display:none;margin-bottom:16px;">
+            <!-- 日点检 -->
+            <div class="summary-bar" style="margin-bottom:4px;">
+                <span style="font-weight:bold;min-width:60px;display:inline-flex;align-items:center;font-size:14px;">日点检</span>
+                <div class="summary-card">
+                    <span class="summary-label">设备总数</span>
+                    <span class="summary-value" id="dailyTotal">-</span>
+                </div>
+                <div class="summary-card inspected">
+                    <span class="summary-label">已点检</span>
+                    <span class="summary-value" id="dailyInspected">-</span>
+                </div>
+                <div class="summary-card uninspected">
+                    <span class="summary-label">未点检</span>
+                    <span class="summary-value" id="dailyUninspected">-</span>
+                </div>
+                <div class="summary-card" style="background:#fff3cd;border-color:#ffc107;">
+                    <span class="summary-label">异常点检</span>
+                    <span class="summary-value" id="dailyAbnormal" style="color:#856404;">-</span>
+                </div>
+            </div>
+            <!-- 周点检 -->
+            <div class="summary-bar" style="margin-bottom:4px;">
+                <span style="font-weight:bold;min-width:60px;display:inline-flex;align-items:center;font-size:14px;">周点检</span>
+                <div class="summary-card">
+                    <span class="summary-label">设备总数</span>
+                    <span class="summary-value" id="weeklyTotal">-</span>
+                </div>
+                <div class="summary-card inspected">
+                    <span class="summary-label">已点检</span>
+                    <span class="summary-value" id="weeklyInspected">-</span>
+                </div>
+                <div class="summary-card uninspected">
+                    <span class="summary-label">未点检</span>
+                    <span class="summary-value" id="weeklyUninspected">-</span>
+                </div>
+                <div class="summary-card" style="background:#fff3cd;border-color:#ffc107;">
+                    <span class="summary-label">异常点检</span>
+                    <span class="summary-value" id="weeklyAbnormal" style="color:#856404;">-</span>
+                </div>
+            </div>
+            <!-- 月点检 -->
+            <div class="summary-bar" style="margin-bottom:4px;">
+                <span style="font-weight:bold;min-width:60px;display:inline-flex;align-items:center;font-size:14px;">月点检</span>
+                <div class="summary-card">
+                    <span class="summary-label">设备总数</span>
+                    <span class="summary-value" id="monthlyTotal">-</span>
+                </div>
+                <div class="summary-card inspected">
+                    <span class="summary-label">已点检</span>
+                    <span class="summary-value" id="monthlyInspected">-</span>
+                </div>
+                <div class="summary-card uninspected">
+                    <span class="summary-label">未点检</span>
+                    <span class="summary-value" id="monthlyUninspected">-</span>
+                </div>
+                <div class="summary-card" style="background:#fff3cd;border-color:#ffc107;">
+                    <span class="summary-label">异常点检</span>
+                    <span class="summary-value" id="monthlyAbnormal" style="color:#856404;">-</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <small>备注：正常标记为 "○"，异常标记为 "×"，未点检标记为 "/"</small>
+        </div>
+    </div>
+    
+    <!-- 登录模态框 -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <h3>用户登录</h3>
+            <div class="form-group">
+                <label>姓名：</label>
+                <select id="usernameSelect">
+                    <option value="">请选择姓名</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>密码：</label>
+                <input type="password" id="passwordInput" placeholder="请输入密码" onkeypress="if(event.keyCode===13) login()">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-login-modal" onclick="login()">登录</button>
+                <button class="btn-cancel-login" onclick="closeLoginModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    //<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    //<script src="./axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    //<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    //<script src="./html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+    <script>
+        // ==================== API 配置 ====================
+        const API_BASE_URL = 'http://192.168.5.6:5039';  // 你的电脑 IP
+        
+        // ==================== 全局变量 ====================
+        let currentDevice = null;
+        let currentYear = null;
+        let currentMonth = null;
+        let templatesData = [];
+        let recordsData = [];
+        let currentUser = null;
+        let currentInspectorId = null;  // 当前选中的点检者工号
+
+        // 签名数据
+        let signatures = {
+            approver: '',
+            confirmer: '',
+            operatorName: ''
+        };
+
+        
+        // ==================== 辅助函数 ====================
+
+        function showError(message) {
+            const errorBar = document.getElementById('errorBar');
+            errorBar.textContent = message;
+            errorBar.style.display = 'block';
+            setTimeout(() => {
+                errorBar.style.display = 'none';
+            }, 5000);
+        }
+        
+        function showStatus(message) {
+            const statusBar = document.getElementById('statusBar');
+            statusBar.textContent = message;
+            statusBar.style.display = 'block';
+            setTimeout(() => {
+                statusBar.style.display = 'none';
+            }, 3000);
+        }
+        
+        // 更新印章显示
+        function updateSignatureDisplay() {
+            updateStamp('stampApprover', 'approverText', signatures.approver);
+            updateStamp('stampConfirmer', 'confirmerText', signatures.confirmer);
+            updateStamp('stampOperator', 'operatorText', signatures.operatorName);
+        }
+
+        function updateStamp(sealId, nameId, nameValue) {
+            const seal = document.getElementById(sealId);
+            const nameEl = document.getElementById(nameId);
+            if (nameValue) {
+                seal.classList.remove('unsigned');
+                const chars = nameValue.split('');
+                if (chars.length <= 2) {
+                    // 单列竖排
+                    nameEl.innerHTML = chars.join('');
+                    nameEl.style.cssText = 'writing-mode:vertical-rl;letter-spacing:4px;';
+                } else if (chars.length === 3) {
+                    // 左1右2，左侧居中
+                    nameEl.innerHTML = `<span style="writing-mode:vertical-rl;letter-spacing:3px;align-self:center;">${chars[0]}</span><span style="writing-mode:vertical-rl;letter-spacing:3px;margin-left:3px;">${chars[1]}${chars[2]}</span>`;
+                    nameEl.style.cssText = 'writing-mode:horizontal-tb;display:flex;align-items:stretch;justify-content:center;';
+                } else {
+                    // 左右各半
+                    const mid = Math.ceil(chars.length / 2);
+                    nameEl.innerHTML = `<span style="writing-mode:vertical-rl;letter-spacing:3px;">${chars.slice(0,mid).join('')}</span><span style="writing-mode:vertical-rl;letter-spacing:3px;margin-left:3px;">${chars.slice(mid).join('')}</span>`;
+                    nameEl.style.cssText = 'writing-mode:horizontal-tb;display:flex;align-items:center;justify-content:center;';
+                }
+            } else {
+                seal.classList.add('unsigned');
+                nameEl.textContent = '未签';
+                nameEl.style.cssText = 'writing-mode:vertical-rl;letter-spacing:1px;';
+            }
+        }
+        
+        // ==================== 设备名称上翻/下翻 ====================
+        function prevDevice() {
+            const select = document.getElementById('deviceSelect');
+            if (select.options.length <= 1) return;  // 只有"请选择设备"选项，无需翻页
+            if (select.selectedIndex > 1) {
+                select.selectedIndex--;
+                if (select.value) loadData();
+            } else {
+                alert('已经是第一个设备，没有更早的了');
+            }
+        }
+
+        function nextDevice() {
+            const select = document.getElementById('deviceSelect');
+            if (select.options.length <= 1) return;
+            if (select.selectedIndex < select.options.length - 1) {
+                select.selectedIndex++;
+                if (select.value) loadData();
+            } else {
+                alert('已经是最后一个设备，没有更多的了');
+            }
+        }
+
+        // ==================== 初始化 ====================
+        function initDateSelectors() {
+            const yearSelect = document.getElementById('yearSelect');
+            const monthSelect = document.getElementById('monthSelect');
+            
+            const currentYear = new Date().getFullYear();
+            for (let year = currentYear - 2; year <= currentYear + 2; year++) {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = `${year}年`;
+                if (year === currentYear) option.selected = true;
+                yearSelect.appendChild(option);
+            }
+            
+            for (let month = 1; month <= 12; month++) {
+                const option = document.createElement('option');
+                option.value = month;
+                option.textContent = `${month}月`;
+                if (month === new Date().getMonth() + 1) option.selected = true;
+                monthSelect.appendChild(option);
+            }
+        }
+        
+        // ==================== API 调用 ====================
+        async function loadDevices() {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/devices`);
+                const devices = response.data;
+                const select = document.getElementById('deviceSelect');
+                select.innerHTML = '<option value="">请选择设备</option>';
+                
+                if (!devices || devices.length === 0) {
+                    select.innerHTML = '<option value="">暂无设备</option>';
+                    showError('设备列表为空，请先添加设备');
+                    return;
+                }
+                
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceModel;
+                    option.textContent = `${device.deviceName} (${device.deviceModel})`;
+                    select.appendChild(option);
+                });
+                
+                console.log('设备列表加载成功:', devices.length, '个设备');
+                // 更新设备总数和月度摘要
+                updateSignSummary();
+                loadMonthlySummary();
+            } catch (error) {
+                console.error('加载设备列表失败:', error);
+                showError('加载设备列表失败：' + (error.message || '网络错误'));
+            }
+        }
+
+        // 加载用户列表
+        async function loadUsers() {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/users/list`);
+                const users = response.data;
+                const select = document.getElementById('usernameSelect');
+                select.innerHTML = '<option value="">请选择姓名</option>';
+                
+                users.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify(user);
+                    option.textContent = `${user.fullName} (${user.role === 'operator' ? '担当' : user.role === 'confirmer' ? '确认' : '承认'})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('加载用户列表失败:', error);
+            }
+        }
+
+        // 加载点检资格人员列表
+        async function loadInspectorList() {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/operators/list`);
+                const select = document.getElementById('inspectorSelect');
+                // 保留第一个"选择点检者"选项
+                select.innerHTML = '<option value="">选择点检者</option>';
+                response.data.forEach(op => {
+                    const option = document.createElement('option');
+                    option.value = op.employeeId;
+                    option.textContent = `${op.lastName} (${op.employeeId})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('加载点检者列表失败:', error);
+            }
+        }
+
+        function onInspectorChange() {
+            const select = document.getElementById('inspectorSelect');
+            currentInspectorId = select.value || null;
+        }
+
+        async function loadTemplates(deviceModel) {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/templates/${deviceModel}`);
+                return response.data;
+            } catch (error) {
+                console.error('加载点检模板失败:', error);
+                throw error;
+            }
+        }
+        
+        async function loadRecords(deviceModel, year, month) {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/records/monthly`, {
+                    params: { deviceModel, year, month }
+                });
+                console.log('API返回的记录:', response.data);
+                return response.data;
+            } catch (error) {
+                console.error('加载记录失败:', error);
+                return [];
+            }
+        }
+
+        // 加载每日点检者映射
+        async function loadDailyInspectors(deviceModel, year, month) {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/operators/daily`, {
+                    params: { deviceModel, year, month }
+                });
+                return response.data.inspectors || {};
+            } catch (error) {
+                console.error('加载每日点检者失败:', error);
+                return {};
+            }
+        }
+
+        // 从数据库加载签名
+        async function loadSignaturesFromDB() {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/signatures/get`, {
+                    params: { 
+                        deviceModel: currentDevice, 
+                        year: currentYear, 
+                        month: currentMonth 
+                    }
+                });
+                signatures = {
+                    approver: response.data.approver || '',
+                    confirmer: response.data.confirmer || '',
+                    operatorName: response.data.operatorName || ''
+                };
+                updateSignatureDisplay();
+                console.log('签名加载成功:', signatures);
+            } catch (error) {
+                console.error('加载签名失败:', error);
+                signatures = { approver: '', confirmer: '', operatorName: '' };
+                updateSignatureDisplay();
+            }
+        }
+        
+        // 更新签名统计（设备总数 / 已签设备数）
+        async function updateSignSummary() {
+            // 设备总数 = 下拉菜单中实际设备的数量（排除"请选择设备"占位项）
+            const select = document.getElementById('deviceSelect');
+            const totalDevices = select.options.length > 1 ? select.options.length - 1 : 0;
+            document.getElementById('totalDeviceCount').value = totalDevices;
+
+            if (!currentUser || !currentYear || !currentMonth) {
+                document.getElementById('signedDeviceCount').value = 0;
+                return;
+            }
+
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/signatures/sign-summary`, {
+                    params: {
+                        year: currentYear,
+                        month: currentMonth,
+                        role: currentUser.role,
+                        fullName: currentUser.fullName
+                    }
+                });
+                document.getElementById('signedDeviceCount').value = response.data.signedCount;
+                document.getElementById('totalDeviceCount').value = response.data.totalDevices;
+
+                // 有漏签时标红提醒
+                const signedInput = document.getElementById('signedDeviceCount');
+                if (response.data.unsignedCount > 0) {
+                    signedInput.style.background = '#fff3cd';
+                    signedInput.style.color = '#856404';
+                } else {
+                    signedInput.style.background = '#d4edda';
+                    signedInput.style.color = '#155724';
+                }
+            } catch (error) {
+                console.error('获取签名统计失败:', error);
+                document.getElementById('signedDeviceCount').value = '?';
+            }
+        }
+
+        // 加载月度摘要：所有设备的点检状态 + 更新统计卡片和下拉标记
+        async function loadMonthlySummary() {
+            const yearSelect = document.getElementById('yearSelect');
+            const monthSelect = document.getElementById('monthSelect');
+            if (!yearSelect || !monthSelect) return;
+
+            const year = parseInt(yearSelect.value);
+            const month = parseInt(monthSelect.value);
+            if (!year || !month) return;
+
+            const freqBar = document.getElementById('frequencySummaryBar');
+
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/frequency-summary`, {
+                    params: { year, month }
+                });
+                const data = response.data;
+
+                if (freqBar) freqBar.style.display = 'block';
+
+                fillFrequencyRow('daily',   data.daily);
+                fillFrequencyRow('weekly',  data.weekly);
+                fillFrequencyRow('monthly', data.monthly);
+
+            } catch (error) {
+                console.error('加载频率摘要失败:', error);
+                ['daily','weekly','monthly'].forEach(f => {
+                    document.getElementById(f + 'Total').textContent = '-';
+                    document.getElementById(f + 'Inspected').textContent = '-';
+                    document.getElementById(f + 'Uninspected').textContent = '-';
+                    document.getElementById(f + 'Abnormal').textContent = '-';
+                });
+            }
+        }
+
+        function fillFrequencyRow(prefix, stats) {
+            if (!stats) return;
+            document.getElementById(prefix + 'Total').textContent = stats.totalDevices;
+            document.getElementById(prefix + 'Inspected').textContent = stats.inspectedDevices;
+            // 未点检：数量 + 设备清单
+            var uniVal = document.getElementById(prefix + 'Uninspected');
+            var uninspectedNames = (stats.uninspectedDeviceModels || []).join('、');
+            uniVal.textContent = stats.uninspectedDevices + (uninspectedNames ? ' [' + uninspectedNames + ']' : '');
+            // 异常点检：数量 + 设备清单
+            var abnVal = document.getElementById(prefix + 'Abnormal');
+            var abnormalNames = (stats.abnormalDeviceModels || []).join('、');
+            abnVal.textContent = (stats.abnormalDevices || 0) + (abnormalNames ? ' [' + abnormalNames + ']' : '');
+        }
+
+        function markUninspectedDevices(uninspectedSet) {
+            const select = document.getElementById('deviceSelect');
+            if (!select || select.options.length <= 1) return;
+
+            for (let i = 1; i < select.options.length; i++) {
+                const option = select.options[i];
+                const deviceModel = option.value;
+                // 移除旧标记
+                const originalText = option.getAttribute('data-original-text') || option.textContent;
+                if (!option.getAttribute('data-original-text')) {
+                    option.setAttribute('data-original-text', originalText);
+                }
+
+                if (uninspectedSet.has(deviceModel)) {
+                    option.textContent = option.getAttribute('data-original-text') + ' ⚠️ 未检';
+                    option.style.color = '#c62828';
+                } else {
+                    option.textContent = option.getAttribute('data-original-text');
+                    option.style.color = '';
+                }
+            }
+        }
+
+        // 自动签名
+        async function autoSign() {
+            if (!currentUser) {
+                showError('请先登录');
+                return false;
+            }
+            
+            const requestData = {
+                deviceModel: currentDevice,
+                year: currentYear,
+                month: currentMonth,
+                role: currentUser.role,
+                fullName: currentUser.fullName
+            };
+            
+            try {
+                const response = await axios.post(`${API_BASE_URL}/api/Inspection/signatures/auto-sign`, requestData);
+                if (response.data.success) {
+                    await loadSignaturesFromDB();
+                    await updateSignSummary();
+                    const roleName = currentUser.role === 'operator' ? '担当' : currentUser.role === 'confirmer' ? '确认' : '承认';
+                    showStatus(`${currentUser.fullName} 已在${roleName}栏签名成功`);
+                    return true;
+                } else {
+                    showError('签名失败：' + response.data.message);
+                    return false;
+                }
+            } catch (error) {
+                console.error('签名失败:', error);
+                showError('签名失败：' + (error.response?.data?.message || error.message));
+                return false;
+            }
+        }
+        
+        // ==================== 登录相关 ====================
+        function showLoginModal() {
+            document.getElementById('loginModal').style.display = 'block';
+            loadUsers();
+            document.getElementById('passwordInput').value = '';
+        }
+        
+        function closeLoginModal() {
+            document.getElementById('loginModal').style.display = 'none';
+            document.getElementById('usernameSelect').value = '';
+            document.getElementById('passwordInput').value = '';
+        }
+        
+        async function login() {
+            const userSelect = document.getElementById('usernameSelect');
+            const password = document.getElementById('passwordInput').value;
+            
+            if (!userSelect.value) {
+                alert('请选择姓名');
+                return;
+            }
+            
+            if (!password) {
+                alert('请输入密码');
+                return;
+            }
+            
+            const selectedUser = JSON.parse(userSelect.value);
+            
+            const loginData = {
+                username: selectedUser.username,
+                password: password
+            };
+            
+            try {
+                const response = await axios.post(`${API_BASE_URL}/api/Inspection/users/login`, loginData);
+                if (response.data.success) {
+                    currentUser = response.data;
+                    closeLoginModal();
+                    
+                    // 显示用户信息栏
+                    const roleName = currentUser.role === 'operator' ? '担当' : currentUser.role === 'confirmer' ? '确认' : '承认';
+                    document.getElementById('userInfo').innerHTML = `当前登录：${currentUser.fullName} (${roleName})`;
+                    document.getElementById('userBar').style.display = 'flex';
+
+                    // 如果是担当角色，显示点检者选择框
+                    if (currentUser.role === 'operator') {
+                        document.getElementById('inspectorSpan').style.display = 'inline';
+                        await loadInspectorList();
+                    }
+
+                    showStatus(`欢迎，${currentUser.fullName}！请选择设备和月份后点击查询`);
+                    
+                    // 清空表格提示
+                    document.getElementById('tableContainer').innerHTML = '<div class="loading">请选择设备、年份/月份并点击查询</div>';
+                } else {
+                    alert('登录失败：' + response.data.message);
+                }
+            } catch (error) {
+                console.error('登录失败:', error);
+                if (error.response && error.response.status === 401) {
+                    alert('用户名或密码错误');
+                } else {
+                    alert('登录失败：' + (error.response?.data?.message || error.message));
+                }
+            }
+        }
+        
+        function logout() {
+            currentUser = null;
+            currentInspectorId = null;
+            document.getElementById('inspectorSpan').style.display = 'none';
+            document.getElementById('userBar').style.display = 'none';
+            document.getElementById('tableContainer').innerHTML = '<div class="loading">请先登录，然后选择设备、年份/月份并点击查询</div>';
+            signatures = { approver: '', confirmer: '', operatorName: '' };
+            updateSignatureDisplay();
+            showStatus('已退出登录');
+        }
+        
+        // 渲染表格（只读）
+        async function renderReadOnlyTable() {
+            if (!templatesData || templatesData.length === 0) {
+                document.getElementById('tableContainer').innerHTML = '<div class="loading">该设备暂无点检项目</div>';
+                return;
+            }
+            
+            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+            // 加载每日点检者
+            const dailyInspectors = await loadDailyInspectors(currentDevice, currentYear, currentMonth);
+
+            // 创建记录映射
+            const recordMap = new Map();
+            recordsData.forEach(record => {
+                const key = `${record.itemName}_${record.inspectionDay}`;
+                recordMap.set(key, record);
+            });
+            
+            let html = '<div style="overflow-x: auto;">';
+            html += '<table style="min-width: 800px;">';
+            html += '<thead>';
+            html += '<tr>';
+            html += '<th style="min-width:60px;">编号</th>';
+            html += '<th style="min-width:100px;">项目</th>';
+            html += '<th style="min-width:60px;">内容</th>';
+            html += '<th style="min-width:50px;">周期</th>';
+            for (let day = 1; day <= daysInMonth; day++) {
+                html += `<th style="min-width:50px;">${day}</th>`;
+            }
+            html += '<th style="min-width:100px;">备注</th>';
+            html += '</tr>';
+            html += '</thead>';
+            html += '<tbody>';
+            
+            templatesData.forEach((template, index) => {
+                const isNumeric = template.itemType === 'numeric';
+                // 构建内容列文本：数值型显示规格范围+单位，检查型显示"检查"
+                let contentText = '检查/清扫';
+                if (isNumeric) {
+                    const min = template.normalMin;
+                    const max = template.normalMax;
+                    const unit = template.unit || '';
+                    if (min != null && max != null) {
+                        contentText = `${min}-${max} ${unit}`.trim();
+                    } else if (min != null) {
+                        contentText = `≥${min} ${unit}`.trim();
+                    } else if (max != null) {
+                        contentText = `≤${max} ${unit}`.trim();
+                    } else {
+                        contentText = '记录';
+                    }
+                }
+
+                // 检测整行是否未点检（所有日期都是"/"即无记录）
+                let allUninspected = true;
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const key = `${template.itemName}_${day}`;
+                    const record = recordMap.get(key);
+                    const val = record ? record.resultValue : '';
+                    if (val && val !== '' && val !== '/') {
+                        allUninspected = false;
+                        break;
+                    }
+                }
+
+                html += '<tr class="' + (allUninspected ? 'row-uninspected' : '') + '">';
+                html += `<td style="background:#fafafa; font-weight:bold;">${index + 1}</td>`;
+                html += `<td style="background:#fafafa; font-weight:bold;">${template.itemName}</td>`;
+                html += `<td style="background:#fafafa; font-size:11px;">${contentText}</td>`;
+                html += `<td style="background:#fafafa; font-size:11px; text-align:center;">${template.frequency || '日'}</td>`;
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const key = `${template.itemName}_${day}`;
+                    const record = recordMap.get(key);
+                    let value = record ? record.resultValue : '';
+                    let cellClass = '';
+                    
+                    if (value === '○') cellClass = 'result-normal';
+                    if (value === '×') cellClass = 'result-abnormal';
+                    
+                    // 关键修复：空值或未定义显示 "/"
+                    let displayValue = (value && value !== '') ? value : '/';
+                    html += `<td class="${cellClass}">${displayValue}</td>`;
+                }
+                
+                // 备注列 - 显示该项目的备注（取第一天的备注）
+                let remark = '';
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const key = `${template.itemName}_${day}`;
+                    const record = recordMap.get(key);
+                    if (record && record.remark) {
+                        remark = record.remark;
+                        break;
+                    }
+                }
+                html += `<td style="background:white;">${remark}</td>`;
+                html += '</tr>';
+            });
+            
+            // 点检者行
+            html += '<tr style="background:#f0f4ff; font-weight:bold;">';
+            html += '<td colspan="3" style="text-align:center; background:#e8edf5; font-weight:bold;">点检者</td>';
+            html += '<td style="background:#e8edf5;"></td>';
+            for (let day = 1; day <= daysInMonth; day++) {
+                const name = dailyInspectors[String(day)] || '';
+                html += `<td style="background:#f0f4ff;">${name}</td>`;
+            }
+            html += '<td style="background:#e8edf5;"></td>';
+            html += '</tr>';
+
+            html += '</tbody>';
+            html += '</table>';
+            html += '</div>';
+            
+            document.getElementById('tableContainer').innerHTML = html;
+        }
+        
+        // ==================== 主要功能 ====================
+        async function loadData() {
+            // 检查是否已登录
+            if (!currentUser) {
+                showLoginModal();
+                return;
+            }
+            
+            const deviceSelect = document.getElementById('deviceSelect');
+            const yearSelect = document.getElementById('yearSelect');
+            const monthSelect = document.getElementById('monthSelect');
+            
+            currentDevice = deviceSelect.value;
+            currentYear = parseInt(yearSelect.value);
+            currentMonth = parseInt(monthSelect.value);
+            
+            if (!currentDevice) {
+                alert('请选择设备');
+                return;
+            }
+            
+            document.getElementById('tableContainer').innerHTML = '<div class="loading">加载中...</div>';
+            
+            try {
+                const [templates, records] = await Promise.all([
+                    loadTemplates(currentDevice),
+                    loadRecords(currentDevice, currentYear, currentMonth)
+                ]);
+                
+                templatesData = templates;
+                recordsData = records;
+
+                await renderReadOnlyTable();
+                
+                // 从数据库加载签名
+                await loadSignaturesFromDB();
+
+                // 更新签名统计和月度摘要
+                await updateSignSummary();
+                await loadMonthlySummary();
+
+                const deviceName = deviceSelect.options[deviceSelect.selectedIndex]?.text || currentDevice;
+                // 更新打印专用设备信息
+                const printInfo = document.getElementById('printDeviceInfo');
+                if (printInfo) {
+                    printInfo.textContent = `设备：${deviceName} ｜ ${currentYear}年${currentMonth}月`;
+                }
+                showStatus(`当前查看：${deviceName} | ${currentYear}年${currentMonth}月 | 共${templates.length}个点检项目`);
+
+            } catch (error) {
+                document.getElementById('tableContainer').innerHTML = '<div class="loading">加载失败，请重试</div>';
+                showError('加载数据失败：' + (error.response?.data?.message || error.message));
+            }
+        }
+        
+        // 确认签名（当前设备）
+        async function confirmSign() {
+            if (!currentUser) {
+                showLoginModal();
+                return;
+            }
+
+            if (!currentDevice) {
+                alert('请先查询设备数据');
+                return;
+            }
+
+            await autoSign();
+        }
+
+        // 一键确认：当前月份所有设备全部签名
+        async function batchSignAll() {
+            if (!currentUser) {
+                showLoginModal();
+                return;
+            }
+
+            const yearSelect = document.getElementById('yearSelect');
+            const monthSelect = document.getElementById('monthSelect');
+            const year = parseInt(yearSelect.value);
+            const month = parseInt(monthSelect.value);
+
+            if (!year || !month) {
+                alert('请先选择年份和月份');
+                return;
+            }
+
+            // 收集所有设备
+            const deviceSelect = document.getElementById('deviceSelect');
+            const devices = [];
+            for (let i = 1; i < deviceSelect.options.length; i++) {
+                const opt = deviceSelect.options[i];
+                if (opt.value) devices.push({ model: opt.value, name: opt.getAttribute('data-original-text') || opt.textContent });
+            }
+
+            if (devices.length === 0) {
+                alert('没有可签名的设备');
+                return;
+            }
+
+            const roleName = currentUser.role === 'operator' ? '担当' : currentUser.role === 'confirmer' ? '确认' : '承认';
+            if (!confirm(`即将以 ${roleName} 身份为 ${year}年${month}月 的全部 ${devices.length} 台设备一键签名，确认？`)) return;
+
+            const btn = document.getElementById('batchSignBtn');
+            btn.disabled = true;
+            btn.textContent = '签名中...';
+            let ok = 0, fail = 0;
+
+            for (const dev of devices) {
+                try {
+                    const res = await axios.post(`${API_BASE_URL}/api/Inspection/signatures/auto-sign`, {
+                        deviceModel: dev.model,
+                        year: year,
+                        month: month,
+                        role: currentUser.role,
+                        fullName: currentUser.fullName
+                    });
+                    if (res.data.success) ok++; else fail++;
+                } catch (e) {
+                    fail++;
+                }
+            }
+
+            btn.disabled = false;
+            btn.textContent = '一键确认';
+
+            // 刷新签名显示和统计
+            await updateSignSummary();
+            await loadMonthlySummary();
+            if (currentDevice) await loadSignaturesFromDB();
+
+            showStatus(`一键确认完成：${year}年${month}月 共 ${devices.length} 台设备，成功 ${ok}，失败 ${fail}`);
+        }
+        
+        // ==================== 导出PDF ====================
+        async function exportPDF() {
+            const tableContainer = document.getElementById('tableContainer');
+            const table = tableContainer && tableContainer.querySelector('table');
+            if (!table) {
+                alert('请先查询设备数据后再导出PDF');
+                return;
+            }
+
+            const deviceSelect = document.getElementById('deviceSelect');
+            // 以下拉框选中项为准（含设备中文名），currentDevice 作兜底；去掉括号内容
+            const selText = deviceSelect.options[deviceSelect.selectedIndex]?.text || '';
+            const rawName = (selText && selText.includes(currentDevice)) ? selText : currentDevice;
+            const deviceName = rawName.replace(/\s*\(.*?\)\s*/g, '').trim();
+
+            // 表格真实宽度
+            const tableW = table.scrollWidth;
+            const capW = Math.max(tableW + 40, 1200);
+
+            // CSS 电子印章（纯样式，无图片，无 canvas 污染）
+            function sealHTML(name, signed) {
+                const c = signed ? '#C41E1E' : '#bbb';
+                const bg = signed ? 'rgba(196,30,30,0.04)' : 'rgba(0,0,0,0.02)';
+                const shadow = signed ? '0 0 0 2px rgba(196,30,30,0.15)' : '0 0 0 2px rgba(0,0,0,0.04)';
+                const dash = signed ? 'rgba(196,30,30,0.3)' : 'rgba(0,0,0,0.08)';
+                const star = signed ? 'rgba(196,30,30,0.12)' : 'rgba(0,0,0,0.05)';
+                const txt = signed ? name : '未签';
+                const fs = signed ? '14px' : '11px';
+                const chars = txt.split('');
+                let inner;
+                if (chars.length <= 2) {
+                    inner = `<span style="writing-mode:vertical-rl;letter-spacing:3px;font-size:${fs};font-weight:bold;color:${c};">${txt}</span>`;
+                } else if (chars.length === 3) {
+                    inner = `<span style="writing-mode:vertical-rl;letter-spacing:2px;font-size:${fs};font-weight:bold;color:${c};align-self:center;">${chars[0]}</span><span style="writing-mode:vertical-rl;letter-spacing:2px;font-size:${fs};font-weight:bold;color:${c};margin-left:2px;">${chars[1]}${chars[2]}</span>`;
+                } else {
+                    const mid = Math.ceil(chars.length / 2);
+                    inner = `<span style="writing-mode:vertical-rl;letter-spacing:2px;font-size:${fs};font-weight:bold;color:${c};">${chars.slice(0,mid).join('')}</span><span style="writing-mode:vertical-rl;letter-spacing:2px;font-size:${fs};font-weight:bold;color:${c};margin-left:2px;">${chars.slice(mid).join('')}</span>`;
+                }
+                return `
+                <div style="display:inline-flex;align-items:center;justify-content:center;
+                    width:60px;height:60px;border:3px solid ${c};border-radius:50%;
+                    position:relative;background:${bg};box-shadow:${shadow};vertical-align:top;">
+                    <span style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;
+                        border:1px dashed ${dash};border-radius:50%;"></span>
+                    <span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                        font-size:18px;color:${star};">★</span>
+                    <span style="position:relative;z-index:1;display:inline-flex;align-items:center;
+                        justify-content:center;line-height:1.2;">${inner}</span>
+                </div>`;
+            }
+
+            const html = `
+            <div style="font-family:'Microsoft YaHei',Arial,sans-serif;padding:10px;background:#fff;width:${capW}px;">
+                <h2 style="text-align:center;margin:0 0 10px;">设备治工具点检表</h2>
+                <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;">
+                    <div style="font-size:18px;color:#333;margin-left:20px;">设备：${deviceName} ｜ ${currentYear}年${currentMonth}月</div>
+                    <div style="text-align:right;">
+                        <span style="display:inline-block;text-align:center;margin:0 6px;font-size:10px;">
+                            <div style="font-size:14px;color:#666;font-weight:bold;margin-bottom:2px;">承 认</div>
+                            ${sealHTML(signatures.approver, !!signatures.approver)}
+                        </span>
+                        <span style="display:inline-block;text-align:center;margin:0 6px;font-size:10px;">
+                            <div style="font-size:14px;color:#666;font-weight:bold;margin-bottom:2px;">确 认</div>
+                            ${sealHTML(signatures.confirmer, !!signatures.confirmer)}
+                        </span>
+                        <span style="display:inline-block;text-align:center;margin:0 6px;font-size:10px;">
+                            <div style="font-size:14px;color:#666;font-weight:bold;margin-bottom:2px;">担 当</div>
+                            ${sealHTML(signatures.operatorName, !!signatures.operatorName)}
+                        </span>
+                    </div>
+                </div>
+                ${tableContainer.innerHTML}
+                <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end;font-size:16px;color:#555;">
+                    <span style="text-align:center;flex:1;">备注：正常标记为 "○"，异常标记为 "×"，未点检标记为 "/"</span>
+                    <span style="text-align:right;font-weight:bold;">SM-T1-03</span>
+                </div>
+            </div>`;
+
+            await html2pdf().set({
+                margin:       [8, 6, 8, 6],
+                filename:     `点检表_${deviceName}_${currentYear}年${currentMonth}月.pdf`,
+                image:        { type: 'jpeg', quality: 0.92 },
+                html2canvas:  { scale: 1.5, width: capW, windowWidth: capW },
+                jsPDF:        { unit: 'mm', format: 'a3', orientation: 'landscape' }
+            }).from(html).save();
+        }
+
+        // ==================== 一键导出：当月所有设备合并为一个 PDF ====================
+        async function batchExportAll() {
+            const yearSelect = document.getElementById('yearSelect');
+            const monthSelect = document.getElementById('monthSelect');
+            const year = parseInt(yearSelect.value);
+            const month = parseInt(monthSelect.value);
+
+            if (!year || !month) { alert('请先选择年份和月份'); return; }
+
+            // 收集所有设备
+            const deviceSelect = document.getElementById('deviceSelect');
+            const devices = [];
+            for (let i = 1; i < deviceSelect.options.length; i++) {
+                const opt = deviceSelect.options[i];
+                if (opt.value) devices.push(opt.value);
+            }
+            if (devices.length === 0) { alert('没有设备'); return; }
+
+            const btn = document.getElementById('batchExportBtn');
+            btn.disabled = true;
+            btn.textContent = '检查中...';
+
+            try {
+                // 1. 检查签名完整性
+                const checkRes = await axios.get(`${API_BASE_URL}/api/Inspection/signatures/check-all`, { params: { year, month } });
+                const checkData = checkRes.data;
+                const incomplete = checkData.devices.filter(d => !d.isComplete);
+
+                if (incomplete.length > 0) {
+                    btn.disabled = false;
+                    btn.textContent = '一键导出';
+                    const list = incomplete.map(d => {
+                        const missing = [];
+                        if (!d.approver) missing.push('承认');
+                        if (!d.confirmer) missing.push('确认');
+                        if (!d.operatorName) missing.push('担当');
+                        return `${d.deviceModel}(缺${missing.join('、')})`;
+                    }).join('\n');
+                    if (!confirm(`以下 ${incomplete.length} 台设备印章不完整：\n\n${list}\n\n是否继续导出？（未签章的印章将显示为空）`)) return;
+                } else {
+                    if (!confirm(`${year}年${month}月全部 ${devices.length} 台设备印章齐全，确认导出？`)) {
+                        btn.disabled = false;
+                        btn.textContent = '一键导出';
+                        return;
+                    }
+                }
+
+                // 2. 逐台导出 — 复用页面渲染和 exportPDF 逻辑
+                let done = 0;
+                const savedDevice = currentDevice;
+                const savedTemplates = templatesData;
+                const savedRecords = recordsData;
+                const savedSignatures = { ...signatures };
+
+                for (const dev of devices) {
+                    btn.textContent = `导出中 ${done+1}/${devices.length}`;
+
+                    // 设置当前设备上下文
+                    currentDevice = dev;
+                    currentYear = year;
+                    currentMonth = month;
+                    const [templates, records, sigRes] = await Promise.all([
+                        loadTemplates(dev),
+                        loadRecords(dev, year, month),
+                        axios.get(`${API_BASE_URL}/api/Inspection/signatures/get`, { params: { deviceModel: dev, year, month } })
+                    ]);
+                    templatesData = templates;
+                    recordsData = records;
+                    signatures = {
+                        approver: sigRes.data.approver || '',
+                        confirmer: sigRes.data.confirmer || '',
+                        operatorName: sigRes.data.operatorName || ''
+                    };
+                    await renderReadOnlyTable();
+
+                    // 等 DOM 更新后调用现有的导出逻辑
+                    await new Promise(r => setTimeout(r, 300));
+                    await exportPDF();
+                    await new Promise(r => setTimeout(r, 300));
+
+                    done++;
+                }
+
+                // 恢复之前的设备上下文
+                currentDevice = savedDevice;
+                templatesData = savedTemplates;
+                recordsData = savedRecords;
+                signatures = savedSignatures;
+                await renderReadOnlyTable();
+                updateSignatureDisplay();
+
+                btn.disabled = false;
+                btn.textContent = '一键导出';
+                showStatus(`一键导出完成：${year}年${month}月 共 ${devices.length} 台设备`);
+            } catch (e) {
+                console.error(e);
+                btn.disabled = false;
+                btn.textContent = '一键导出';
+                alert('导出失败：' + (e.response?.data?.error || e.message));
+            }
+        }
+
+        // ==================== 页面启动 ====================
+        window.onload = () => {
+            initDateSelectors();
+            loadDevices();
+            // 自动弹出登录框
+            setTimeout(() => {
+                showLoginModal();
+            }, 500);
+        };
+    </script>
+</body>
+</html>
