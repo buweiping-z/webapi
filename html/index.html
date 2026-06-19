@@ -2730,15 +2730,18 @@
                 </div>`;
             }
 
+            // 去掉 tableContainer 的 overflow-x wrapper，避免 PDF 中溢出裁切
+            const tableOnly = tableContainer.innerHTML
+                .replace(/<div style="overflow-x:\s*auto;?"\s*>/i, '')
+                .replace(/<\/div>\s*$/i, '');
             const html = `
-            <div style="font-family:'Microsoft YaHei',Arial,sans-serif;padding:10px 10px;background:#fff;width:${capW}px;">
+            <div style="font-family:'Microsoft YaHei',Arial,sans-serif;padding:10px 15px 20px 15px;background:#fff;width:${capW}px;overflow:hidden;">
                 <!-- 标题行：附表一矩形框（左） + 设备治工具点检表标题（居中） -->
                 <div style="display:flex;align-items:center;margin:0 0 10px 0;">
                     <div style="border:2.5px solid #333;padding:6px 14px;font-size:16px;font-weight:bold;flex-shrink:0;letter-spacing:2px;">附表一</div>
                     <div style="flex:1;text-align:center;">
                         <h2 style="margin:0;font-size:22px;">设备治工具点检表</h2>
                     </div>
-                    <!-- 右侧占位，与左侧矩形框宽度对称，保证标题真正居中 -->
                     <div style="width:82px;flex-shrink:0;"></div>
                 </div>
                 <!-- 设备信息 + 印章行 -->
@@ -2759,10 +2762,10 @@
                         </span>
                     </div>
                 </div>
-                ${tableContainer.innerHTML}
-                <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end;font-size:16px;color:#555;">
-                    <span style="text-align:center;flex:1;">备注：正常标记为 "○"，异常标记为 "×"，未点检标记为 "/"</span>
-                    <span style="text-align:right;font-weight:bold;">SM-T1-03</span>
+                ${tableOnly}
+                <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end;font-size:16px;color:#555;flex-wrap:nowrap;">
+                    <span style="text-align:center;flex:1;white-space:nowrap;">备注：正常标记为 "○"，异常标记为 "×"，未点检标记为 "/"</span>
+                    <span style="text-align:right;font-weight:bold;flex-shrink:0;margin-left:20px;">SM-T1-03</span>
                 </div>
             </div>`;
 
