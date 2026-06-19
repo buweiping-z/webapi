@@ -13,10 +13,12 @@ namespace webapi.Controllers
     public class InspectionController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IWebHostEnvironment _env;
 
-        public InspectionController(AppDbContext context)
+        public InspectionController(AppDbContext context, IWebHostEnvironment env)
         {
             _context = context;
+            _env = env;
         }
 
         // 旧接口：提交简单点检（兼容）
@@ -32,6 +34,15 @@ namespace webapi.Controllers
             if (!isQualified)
                 return BadRequest(new { success = false, message = "该工号无点检资格" });
 
+            // 计算 pending_photo 状态：检查是否有异常+requirePhoto 的项
+            var requirePhotoItems = await _context.InspectionTemplates
+                .Where(t => t.DeviceModel == request.DeviceName && t.RequirePhoto)
+                .Select(t => t.ItemName)
+                .ToListAsync();
+
+            var hasAbnormalMissingPhoto = request.CheckItems.Any(c =>
+                requirePhotoItems.Contains(c.ItemName) && c.Result == "异常");
+
             var record = new InspectionRecord
             {
                 EmployeeId = request.EmployeeId,
@@ -39,7 +50,7 @@ namespace webapi.Controllers
                 DeviceModel = request.DeviceName, // 暂时兼容
                 InspectionTime = DateTime.Now,
                 ResultsJson = System.Text.Json.JsonSerializer.Serialize(request.CheckItems),
-                Status = "submitted"
+                Status = hasAbnormalMissingPhoto ? InspectionStatus.PendingPhoto : InspectionStatus.Submitted
             };
 
             _context.InspectionRecords.Add(record);
@@ -82,7 +93,10 @@ namespace webapi.Controllers
             var frequency = string.IsNullOrEmpty(request.Frequency) ? "日" : request.Frequency;
             var periodKey = GeneratePeriodKey(frequency, now);
 
-            // 同一周期已有记录时先删除旧记录（异常重检场景），级联删除旧结果
+            // ===== 照片迁移：删除旧记录前，先捕获旧照片信息 =====
+            List<(string PhotoPath, string ThumbnailPath, string ItemName, int PhotoOrder, string UploadedBy)> oldPhotos = new();
+            int? oldRecordId = null;
+
             var existingRecord = await _context.InspectionRecords
                 .AsTracking()
                 .FirstOrDefaultAsync(r => r.DeviceModel == request.DeviceModel
@@ -90,18 +104,42 @@ namespace webapi.Controllers
                     && r.PeriodKey == periodKey);
             if (existingRecord != null)
             {
+                oldRecordId = existingRecord.Id;
+                // 在级联删除之前，捕获所有照片记录到内存
+                var oldPhotoRows = await _context.InspectionPhotos
+                    .Where(p => p.RecordId == existingRecord.Id)
+                    .Select(p => new {
+                        p.PhotoPath, p.ThumbnailPath, p.ItemName,
+                        p.PhotoOrder, p.UploadedBy
+                    })
+                    .ToListAsync();
+
+                oldPhotos = oldPhotoRows
+                    .Select(p => (p.PhotoPath, p.ThumbnailPath ?? "",
+                        p.ItemName, p.PhotoOrder, p.UploadedBy))
+                    .ToList();
+
                 _context.InspectionRecords.Remove(existingRecord);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(); // 触发级联删除 inspection_photos 行
             }
 
             // 创建新记录
+            // 计算 pending_photo 状态
+            var requirePhotoItems = await _context.InspectionTemplates
+                .Where(t => t.DeviceModel == request.DeviceModel && t.RequirePhoto)
+                .Select(t => t.ItemName)
+                .ToListAsync();
+
+            var hasAbnormalMissingPhoto = request.Results.Any(r =>
+                requirePhotoItems.Contains(r.ItemName) && !r.IsNormal);
+
             var record = new InspectionRecord
             {
                 EmployeeId = request.EmployeeId,
                 DeviceModel = request.DeviceModel,
                 DeviceName = request.DeviceModel,
                 InspectionTime = now,
-                Status = "submitted",
+                Status = hasAbnormalMissingPhoto ? InspectionStatus.PendingPhoto : InspectionStatus.Submitted,
                 Frequency = frequency,
                 PeriodKey = periodKey,
                 ResultsJson = ""
@@ -125,6 +163,75 @@ namespace webapi.Controllers
             }
 
             await _context.SaveChangesAsync();
+
+            // ===== 照片迁移：将旧照片恢复到新 recordId =====
+            if (oldRecordId.HasValue && oldPhotos.Count > 0)
+            {
+                var webRootPath = _env.WebRootPath;
+                var oldDir = Path.Combine(webRootPath, "photos",
+                    oldRecordId.Value.ToString());
+                var nowDate = record.InspectionTime;
+                var newDir = Path.Combine(webRootPath, "photos",
+                    nowDate.Year.ToString(), nowDate.Month.ToString("D2"),
+                    record.Id.ToString());
+
+                // 插入新的 InspectionPhoto 行
+                foreach (var op in oldPhotos)
+                {
+                    // 将旧路径中的 recordId 替换为新的
+                    var newPhotoPath = op.PhotoPath.Replace(
+                        $"/{oldRecordId.Value}/", $"/{record.Id}/");
+                    var newThumbPath = op.ThumbnailPath?.Replace(
+                        $"/{oldRecordId.Value}/", $"/{record.Id}/");
+
+                    _context.InspectionPhotos.Add(new InspectionPhoto
+                    {
+                        RecordId = record.Id,
+                        ItemName = op.ItemName,
+                        PhotoPath = newPhotoPath ?? op.PhotoPath,
+                        ThumbnailPath = newThumbPath,
+                        PhotoOrder = op.PhotoOrder,
+                        UploadedBy = op.UploadedBy,
+                        CreatedAt = DateTime.Now
+                    });
+                }
+
+                // 迁移文件目录（如果旧目录还存在）
+                if (Directory.Exists(oldDir))
+                {
+                    if (!Directory.Exists(newDir))
+                        Directory.CreateDirectory(Path.GetDirectoryName(newDir)!);
+
+                    // 移动所有旧文件到新目录
+                    foreach (var file in Directory.GetFiles(oldDir))
+                    {
+                        var fileName = Path.GetFileName(file);
+                        var destFile = Path.Combine(newDir, fileName);
+                        if (!System.IO.File.Exists(destFile))
+                            System.IO.File.Move(file, destFile);
+                    }
+                    // 删除旧目录（如果已空）
+                    if (!Directory.EnumerateFileSystemEntries(oldDir).Any())
+                        Directory.Delete(oldDir);
+                }
+
+                await _context.SaveChangesAsync();
+
+                // 如果旧照片已覆盖所有异常项，更新状态
+                if (record.Status == InspectionStatus.PendingPhoto)
+                {
+                    var photoItems = oldPhotos.Select(p => p.ItemName).Distinct().ToHashSet();
+                    var abnormalItems = request.Results
+                        .Where(r => !r.IsNormal && requirePhotoItems.Contains(r.ItemName))
+                        .Select(r => r.ItemName);
+                    var allCovered = abnormalItems.All(item => photoItems.Contains(item));
+                    if (allCovered)
+                    {
+                        record.Status = InspectionStatus.Submitted;
+                        await _context.SaveChangesAsync();
+                    }
+                }
+            }
 
             return Ok(new { success = true, recordId = record.Id, message = "点检数据已保存" });
         }
@@ -162,11 +269,13 @@ namespace webapi.Controllers
                           && r.InspectionTime <= endDate
                     select new MonthlyRecordDto
                     {
+                        RecordId = r.Id,
                         ItemName = res.ItemName,
                         InspectionDay = r.InspectionTime.Day,
                         ResultValue = res.ResultValue,
                         Remark = res.Remark,
-                        IsNormal = res.IsNormal
+                        IsNormal = res.IsNormal,
+                        Status = r.Status
                     };
 
                 var totalCount = await query.CountAsync();
@@ -283,8 +392,73 @@ namespace webapi.Controllers
                             record.Id, item.ItemName, saveValue, saveValue == "正常", item.Remark);
                     }
 
+                    // ===== 计算每个 record 的 pending_photo 状态 =====
+                    var requirePhotoItems = await _context.InspectionTemplates
+                        .Where(t => t.DeviceModel == request.DeviceModel && t.RequirePhoto)
+                        .Select(t => t.ItemName)
+                        .ToListAsync();
+
+                    var recordIds = new List<int>();
+                    var pendingPhotoItems = new List<object>();
+
+                    foreach (var kvp in existingRecordMap)
+                    {
+                        var rec = kvp.Value;
+                        var day = rec.InspectionTime.Day;
+
+                        // 收集该 record 的所有异常+requirePhoto 项
+                        var abnormalPhotoItems = request.Results
+                            .Where(r => r.Day == day
+                                && requirePhotoItems.Contains(r.ItemName)
+                                && (r.ResultValue == "×" || r.ResultValue == "异常"))
+                            .Select(r => r.ItemName)
+                            .ToList();
+
+                        if (abnormalPhotoItems.Count > 0)
+                        {
+                            // 有异常+需拍照的项，检查是否已有照片覆盖
+                            var photoItemNames = await _context.InspectionPhotos
+                                .Where(p => p.RecordId == rec.Id)
+                                .Select(p => p.ItemName)
+                                .Distinct()
+                                .ToListAsync();
+
+                            var missingItems = abnormalPhotoItems
+                                .Where(item => !photoItemNames.Contains(item))
+                                .ToList();
+
+                            if (missingItems.Count > 0)
+                            {
+                                rec.Status = InspectionStatus.PendingPhoto;
+                                pendingPhotoItems.Add(new
+                                {
+                                    recordId = rec.Id,
+                                    day = day,
+                                    missingItems = missingItems
+                                });
+                            }
+                            else
+                            {
+                                rec.Status = InspectionStatus.Submitted;
+                            }
+                        }
+                        else
+                        {
+                            rec.Status = InspectionStatus.Submitted;
+                        }
+
+                        recordIds.Add(rec.Id);
+                    }
+
+                    await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
-                    return Ok(new { success = true, message = "保存成功" });
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "保存成功",
+                        recordIds = recordIds,
+                        pendingPhotoItems = pendingPhotoItems
+                    });
                 }
                 catch
                 {
@@ -1410,11 +1584,13 @@ namespace webapi.Controllers
     // 临时 DTO 用于数据传输
     public class MonthlyRecordDto
     {
+        public int RecordId { get; set; }
         public string ItemName { get; set; } = string.Empty;
         public int InspectionDay { get; set; }
         public string ResultValue { get; set; } = string.Empty;
         public string Remark { get; set; } = string.Empty;
         public bool IsNormal { get; set; }
+        public string Status { get; set; } = string.Empty;
     }
 
 

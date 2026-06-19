@@ -17,6 +17,7 @@
         public DbSet<InspectionUser> InspectionUsers { get; set; }
         public DbSet<QualifiedInspector> QualifiedInspectors { get; set; }
         public DbSet<Device> Devices { get; set; }
+        public DbSet<InspectionPhoto> InspectionPhotos { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -87,6 +88,22 @@
                 entity.HasIndex(e => e.EmployeeId)
                     .IsUnique()
                     .HasDatabaseName("idx_qualified_inspectors_employee_id");
+            });
+
+            modelBuilder.Entity<InspectionPhoto>(entity =>
+            {
+                entity.ToTable("inspection_photos");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.RecordId).HasColumnName("record_id").IsRequired();
+                entity.Property(e => e.ItemName).HasColumnName("item_name").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.PhotoPath).HasColumnName("photo_path").HasMaxLength(500).IsRequired();
+                entity.Property(e => e.ThumbnailPath).HasColumnName("thumbnail_path").HasMaxLength(500);
+                entity.Property(e => e.PhotoOrder).HasColumnName("photo_order").HasDefaultValue(0);
+                entity.Property(e => e.UploadedBy).HasColumnName("uploaded_by").HasMaxLength(50).HasDefaultValue("");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+                entity.HasIndex(e => e.RecordId).HasDatabaseName("idx_photos_record");
+                entity.HasIndex(e => new { e.RecordId, e.ItemName }).HasDatabaseName("idx_photos_item");
             });
 
             modelBuilder.Entity<Device>(entity =>

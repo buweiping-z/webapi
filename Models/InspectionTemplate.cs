@@ -33,5 +33,8 @@ namespace webapi.Models
 
         [Column("frequency")]
         public string Frequency { get; set; } = "日";
+
+        [Column("require_photo")]
+        public bool RequirePhoto { get; set; } = false;
     }
 }

@@ -1319,6 +1319,86 @@
             from { opacity: 0; transform: translateY(4px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        /* ============================================================
+           Photo Lightbox
+           ============================================================ */
+        .photo-indicator {
+            display: inline-block;
+            margin-left: 3px;
+            font-size: 10px;
+            cursor: pointer;
+            vertical-align: top;
+            color: #3B82F6;
+        }
+        .photo-indicator:hover { color: #1D4ED8; }
+
+        .row-pending-photo {
+            border-left: 3px solid #F59E0B !important;
+        }
+        .row-pending-photo td:first-child::before {
+            content: '⚠️ ';
+            color: #F59E0B;
+            font-size: 12px;
+        }
+
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 9999;
+        }
+        .lightbox.active { display: flex; }
+
+        .lightbox-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.88);
+        }
+
+        .lightbox-content {
+            position: relative;
+            margin: auto;
+            max-width: 90vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .lightbox-content img {
+            max-width: 90vw;
+            max-height: 80vh;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        .lightbox-info {
+            color: #E2E8F0;
+            font-size: 13px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .lightbox-close, .lightbox-prev, .lightbox-next {
+            position: absolute;
+            background: rgba(0,0,0,0.5);
+            color: #fff;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 4px;
+        }
+        .lightbox-close { top: 10px; right: 10px; }
+        .lightbox-prev  { left: 10px; top: 50%; transform: translateY(-50%); }
+        .lightbox-next  { right: 10px; top: 50%; transform: translateY(-50%); }
+
+        .lightbox-close:hover, .lightbox-prev:hover, .lightbox-next:hover {
+            background: rgba(0,0,0,0.8);
+        }
     </style>
 </head>
 <body>
@@ -1552,6 +1632,23 @@
     </div>
 
     <!-- ============================================================
+         Photo Lightbox
+         ============================================================ -->
+    <div id="photoLightbox" class="lightbox">
+        <div class="lightbox-overlay"></div>
+        <div class="lightbox-content">
+            <img id="lightboxImg" src="" alt="点检照片" />
+            <div class="lightbox-info">
+                <span id="lightboxItem"></span>
+                <span id="lightboxCounter"></span>
+            </div>
+            <button class="lightbox-prev" title="上一张">‹</button>
+            <button class="lightbox-next" title="下一张">›</button>
+            <button class="lightbox-close" title="关闭">✕</button>
+        </div>
+    </div>
+
+    <!-- ============================================================
          Scripts
          ============================================================ -->
     <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"
@@ -1582,6 +1679,14 @@
         let templatesData = [];
         let recordsData = [];
         let currentUser = null;
+
+        // 照片数据 — {recordId}_{itemName} → [photo objects]
+        let photoMap = {};
+        // 当月每 record 的 status — {recordId: status}
+        let recordStatusMap = {};
+        // Lightbox 状态
+        let lightboxPhotos = [];
+        let lightboxIndex = 0;
         let currentInspectorId = null;  // 当前选中的点检者工号
 
         // 签名数据
@@ -1794,6 +1899,33 @@
             } catch (error) {
                 console.error('加载记录失败:', error);
                 return [];
+            }
+        }
+
+        // 加载当月所有照片（批量，避免 N+1）
+        async function loadMonthlyPhotos(deviceModel, year, month) {
+            photoMap = {};
+            recordStatusMap = {};
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/Inspection/photos/monthly`, {
+                    params: { deviceModel, year, month }
+                });
+                const photos = response.data || [];
+                photos.forEach(p => {
+                    const key = `${p.recordId}_${p.itemName}`;
+                    if (!photoMap[key]) photoMap[key] = [];
+                    photoMap[key].push(p);
+                });
+                // 构建 status map（在 renderReadOnlyTable 中会用到 recordsData 里的 status）
+                if (recordsData && recordsData.length > 0) {
+                    recordsData.forEach(r => {
+                        if (r.recordId && r.status) {
+                            recordStatusMap[r.recordId] = r.status;
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('加载照片失败:', error);
             }
         }
 
@@ -2181,7 +2313,18 @@
                     }
                 }
 
-                html += '<tr class="' + (allUninspected ? 'row-uninspected' : '') + '">';
+                // 检查该行是否有任何 pending_photo 记录
+                let rowHasPending = false;
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const key = `${template.itemName}_${day}`;
+                    const record = recordMap.get(key);
+                    if (record && record.status === 'pending_photo') { rowHasPending = true; break; }
+                }
+
+                let rowClass = allUninspected ? 'row-uninspected' : '';
+                if (rowHasPending) rowClass += ' row-pending-photo';
+
+                html += '<tr class="' + rowClass + '">';
                 html += `<td style="background:#F8FAFC;font-weight:600;color:var(--text-secondary);">${index + 1}</td>`;
                 html += `<td style="background:#F8FAFC;font-weight:600;text-align:left;padding-left:10px;">${template.itemName}</td>`;
                 html += `<td style="background:#F8FAFC;font-size:11px;color:var(--text-secondary);">${contentText}</td>`;
@@ -2192,10 +2335,14 @@
                     const record = recordMap.get(key);
                     let value = record ? record.resultValue : '';
                     let cellClass = '';
+                    let recordIdAttr = '';
+                    let itemNameAttr = '';
                     let remarkAttr = '';
                     let isNormalAttr = '';
 
                     if (record) {
+                        recordIdAttr = ` data-record-id="${record.recordId}"`;
+                        itemNameAttr = ` data-item-name="${escapeHtml(template.itemName)}"`;
                         isNormalAttr = ` data-isnormal="${record.isNormal}"`;
                         if (record.remark) {
                             remarkAttr = ` data-remark="${escapeHtml(record.remark)}"`;
@@ -2214,7 +2361,18 @@
 
                     // 空值或未定义显示 "/"
                     let displayValue = (value && value !== '') ? value : '/';
-                    html += `<td class="${cellClass}"${isNormalAttr}${remarkAttr}>${displayValue}</td>`;
+
+                    // 照片标记
+                    let photoIndicator = '';
+                    if (record && record.recordId) {
+                        const photoKey = `${record.recordId}_${template.itemName}`;
+                        const photos = photoMap[photoKey];
+                        if (photos && photos.length > 0) {
+                            photoIndicator = `<span class="photo-indicator" data-photo-key="${photoKey}">📷${photos.length > 1 ? photos.length : ''}</span>`;
+                        }
+                    }
+
+                    html += `<td class="${cellClass}"${recordIdAttr}${itemNameAttr}${isNormalAttr}${remarkAttr}>${displayValue}${photoIndicator}</td>`;
                 }
 
                 html += '</tr>';
@@ -2309,6 +2467,81 @@
             }
         });
 
+        // ==================== 照片 Lightbox ====================
+
+        function openLightbox(photoKey) {
+            const photos = photoMap[photoKey];
+            if (!photos || photos.length === 0) return;
+
+            lightboxPhotos = photos.sort((a, b) => a.photoOrder - b.photoOrder);
+            lightboxIndex = 0;
+            showLightboxImage();
+
+            const lb = document.getElementById('photoLightbox');
+            lb.classList.add('active');
+        }
+
+        function closeLightbox() {
+            const lb = document.getElementById('photoLightbox');
+            lb.classList.remove('active');
+            lightboxPhotos = [];
+            lightboxIndex = 0;
+        }
+
+        function showLightboxImage() {
+            if (lightboxPhotos.length === 0) return;
+            const photo = lightboxPhotos[lightboxIndex];
+            document.getElementById('lightboxImg').src = API_BASE_URL + photo.photoPath;
+            document.getElementById('lightboxItem').textContent = photo.itemName;
+            document.getElementById('lightboxCounter').textContent =
+                lightboxPhotos.length > 1 ?
+                `${lightboxIndex + 1} / ${lightboxPhotos.length}` : '';
+        }
+
+        function lightboxPrev() {
+            if (lightboxPhotos.length <= 1) return;
+            lightboxIndex = (lightboxIndex - 1 + lightboxPhotos.length) % lightboxPhotos.length;
+            showLightboxImage();
+        }
+
+        function lightboxNext() {
+            if (lightboxPhotos.length <= 1) return;
+            lightboxIndex = (lightboxIndex + 1) % lightboxPhotos.length;
+            showLightboxImage();
+        }
+
+        // Lightbox 按钮事件
+        document.getElementById('photoLightbox').addEventListener('click', function(e) {
+            if (e.target.classList.contains('lightbox-overlay')) {
+                closeLightbox();
+            }
+        });
+        document.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
+        document.querySelector('.lightbox-prev').addEventListener('click', function(e) {
+            e.stopPropagation(); lightboxPrev();
+        });
+        document.querySelector('.lightbox-next').addEventListener('click', function(e) {
+            e.stopPropagation(); lightboxNext();
+        });
+
+        // 键盘导航
+        document.addEventListener('keydown', function(e) {
+            const lb = document.getElementById('photoLightbox');
+            if (!lb.classList.contains('active')) return;
+            if (e.key === 'Escape') { closeLightbox(); }
+            if (e.key === 'ArrowLeft') { lightboxPrev(); }
+            if (e.key === 'ArrowRight') { lightboxNext(); }
+        });
+
+        // 点击照片标记时打开 lightbox（事件委托）
+        document.getElementById('tableContainer').addEventListener('click', function(e) {
+            const indicator = e.target.closest('.photo-indicator');
+            if (!indicator) return;
+            e.stopPropagation();
+            const photoKey = indicator.getAttribute('data-photo-key');
+            if (photoKey) openLightbox(photoKey);
+        });
+
         // ==================== 主要功能 ====================
         async function loadData() {
             // 检查是否已登录
@@ -2340,6 +2573,9 @@
 
                 templatesData = templates;
                 recordsData = records;
+
+                // 加载当月所有照片（批量查询，在渲染前完成）
+                await loadMonthlyPhotos(currentDevice, currentYear, currentMonth);
 
                 await renderReadOnlyTable();
 
