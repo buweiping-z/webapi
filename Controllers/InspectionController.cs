@@ -389,7 +389,7 @@ namespace webapi.Controllers
                             continue;
 
                         await _context.Database.ExecuteSqlRawAsync(upsertSql,
-                            record.Id, item.ItemName, saveValue, saveValue == "正常", item.Remark);
+                            record.Id, item.ItemName, saveValue, item.IsNormal, item.Remark);
                     }
 
                     // ===== 计算每个 record 的 pending_photo 状态 =====
@@ -410,7 +410,7 @@ namespace webapi.Controllers
                         var abnormalPhotoItems = request.Results
                             .Where(r => r.Day == day
                                 && requirePhotoItems.Contains(r.ItemName)
-                                && (r.ResultValue == "×" || r.ResultValue == "异常"))
+                                && !r.IsNormal)
                             .Select(r => r.ItemName)
                             .ToList();
 
@@ -1607,6 +1607,7 @@ namespace webapi.Controllers
         public int Day { get; set; }
         public string ItemName { get; set; } = string.Empty;
         public string ResultValue { get; set; } = string.Empty;
+        public bool IsNormal { get; set; }
         public string Remark { get; set; } = string.Empty;
     }
     public class SaveSignaturesRequest

@@ -116,6 +116,7 @@ data class SaveRecordItem(
     val day: Int,
     val itemName: String,
     val resultValue: String,
+    val isNormal: Boolean,
     val remark: String
 )
 
