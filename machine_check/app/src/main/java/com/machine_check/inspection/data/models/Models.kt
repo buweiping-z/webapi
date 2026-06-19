@@ -109,6 +109,9 @@ data class UninspectedMonthlyResponse(
 
 // ==================== 照片功能相关模型 ====================
 
+/** 每项最多照片数 */
+const val MAX_PHOTOS_PER_ITEM = 5
+
 /**
  * records/save 请求体中的单条记录
  */
@@ -141,13 +144,17 @@ data class SaveRecordResponse(
     val pendingPhotoItems: List<PendingPhotoItem> = emptyList()
 )
 
-/**
- * 缺照片的检查项
- */
+/** 缺照片的检查项（含已有张数） */
+data class MissingPhotoItem(
+    val itemName: String,
+    val existingPhotoCount: Int = 0
+)
+
+/** 缺照片的检查项分组 */
 data class PendingPhotoItem(
     val recordId: Int,
     val periodKey: String = "",
-    val missingItems: List<String>
+    val missingItems: List<MissingPhotoItem>
 )
 
 /**
@@ -174,13 +181,12 @@ data class MonthlyPhoto(
     val createdAt: String
 )
 
-/**
- * 单个点检项的照片状态（UI 层使用）
- */
+/** 单个点检项的照片状态（UI 层使用） */
 data class PhotoItemState(
-    val localFilePath: String? = null,      // 本地拍摄的照片路径（待上传）
-    val uploadedPhotoIds: List<Int> = emptyList(),  // 已上传的照片 ID
-    val isUploading: Boolean = false,       // 是否正在上传
-    val uploadError: String? = null         // 上传失败错误信息
+    val localFilePaths: List<String> = emptyList(),      // 本地照片路径（最多 MAX_PHOTOS_PER_ITEM）
+    val uploadedPhotoIds: List<Int> = emptyList(),       // 已上传的照片 ID
+    val isUploading: Boolean = false,                    // 是否有照片正在上传
+    val uploadingIndex: Int = -1,                        // 正在上传第几张（-1 表示无）
+    val uploadError: String? = null
 )
 
