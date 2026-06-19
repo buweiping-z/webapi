@@ -3,11 +3,19 @@ package com.machine_check.inspection.data.repository
 import com.machine_check.inspection.data.models.FrequenciesAvailableResponse
 import com.machine_check.inspection.data.models.FullInspectionRequest
 import com.machine_check.inspection.data.models.InspectionTemplate
+import com.machine_check.inspection.data.models.PhotoUploadResponse
+import com.machine_check.inspection.data.models.SaveDailyRecordRequest
+import com.machine_check.inspection.data.models.SaveRecordResponse
 import com.machine_check.inspection.data.models.SubmitResponse
 import com.machine_check.inspection.data.models.UninspectedMandatoryResponse
 import com.machine_check.inspection.data.models.UninspectedMonthlyResponse
 import com.machine_check.inspection.data.network.ApiService
 import com.machine_check.inspection.data.network.RetrofitClient
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 
 /**
  * 点检数据仓库
@@ -166,6 +174,63 @@ class InspectionRepository(
             }
         } catch (e: Exception) {
             Result.failure(Exception("网络连接失败: ${e.message ?: e.toString()}"))
+        }
+    }
+
+    // ==================== 照片功能 ====================
+
+    /** 保存每日点检记录（返回 recordIds + pendingPhotoItems） */
+    suspend fun saveDailyRecord(request: SaveDailyRecordRequest): Result<SaveRecordResponse> {
+        return try {
+            val response = api.saveDailyRecord(request)
+            if (response.isSuccessful) {
+                val body = response.body()
+                if (body != null) Result.success(body)
+                else Result.failure(Exception("保存失败: 服务端返回了空响应体"))
+            } else {
+                Result.failure(Exception("保存失败: ${response.code()} ${response.message()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("网络连接失败: ${e.message ?: e.toString()}"))
+        }
+    }
+
+    /** 上传单张照片 */
+    suspend fun uploadPhoto(
+        filePath: String,
+        recordId: Int,
+        itemName: String,
+        photoOrder: Int = 0,
+        uploadedBy: String = ""
+    ): Result<PhotoUploadResponse> {
+        return try {
+            val file = File(filePath)
+            if (!file.exists()) {
+                return Result.failure(Exception("照片文件不存在: $filePath"))
+            }
+
+            val filePart = MultipartBody.Part.createFormData(
+                "file", file.name,
+                file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+            )
+            val recordIdBody = recordId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+            val itemNameBody = itemName.toRequestBody("text/plain".toMediaTypeOrNull())
+            val photoOrderBody = photoOrder.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+            val uploadedByBody = uploadedBy.toRequestBody("text/plain".toMediaTypeOrNull())
+
+            val response = api.uploadPhoto(
+                filePart, recordIdBody, itemNameBody, photoOrderBody, uploadedByBody
+            )
+            if (response.isSuccessful) {
+                val body = response.body()
+                if (body != null) Result.success(body)
+                else Result.failure(Exception("上传失败: 服务端返回了空响应体"))
+            } else {
+                // 尝试解析错误消息
+                Result.failure(Exception("上传失败: ${response.code()} ${response.message()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("上传失败: ${e.message ?: e.toString()}"))
         }
     }
 }

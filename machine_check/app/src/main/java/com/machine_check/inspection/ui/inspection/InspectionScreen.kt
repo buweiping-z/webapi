@@ -1,13 +1,20 @@
 package com.machine_check.inspection.ui.inspection
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,18 +23,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
+import java.io.File
 
 /**
  * 点检页面
- * 根据设备型号加载模板，动态生成表单
+ * 根据设备型号加载模板，动态生成表单（支持拍照）
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +52,7 @@ fun InspectionScreen(
     viewModel: InspectionViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // 加载模板
     LaunchedEffect(deviceModel, frequency) {
@@ -86,9 +98,7 @@ fun InspectionScreen(
         when (val state = uiState) {
             is InspectionUiState.Loading -> {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
+                    modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -101,10 +111,7 @@ fun InspectionScreen(
 
             is InspectionUiState.Error -> {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -116,22 +123,16 @@ fun InspectionScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = {
                             viewModel.retry(deviceModel, employeeId, frequency, periodKey)
-                        }) {
-                            Text("重试")
-                        }
+                        }) { Text("重试") }
                     }
                 }
             }
 
             is InspectionUiState.Empty -> {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
+                    modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center
-                ) {
-                    Text("该设备型号暂无点检模板")
-                }
+                ) { Text("该设备型号暂无点检模板") }
             }
 
             is InspectionUiState.Form -> {
@@ -154,12 +155,84 @@ private fun InspectionForm(
     viewModel: InspectionViewModel,
     modifier: Modifier = Modifier
 ) {
+    // 相机 URI 状态（每个 requirePhoto 项独立管理）
+    var pendingPhotoIndex by remember { mutableStateOf(-1) }
+    var cameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && pendingPhotoIndex >= 0) {
+            cameraUri?.let { uri ->
+                viewModel.onPhotoTaken(pendingPhotoIndex, uri.path ?: "")
+            }
+        }
+        pendingPhotoIndex = -1
+    }
+
+    val context = LocalContext.current
+
     Column(modifier = modifier.fillMaxSize()) {
+        // ===== Pending Photo 提示条 =====
+        if (state.pendingPhotoItems.isNotEmpty()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(0xFFFFF3E0),
+                shadowElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFE65100),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "需要为以下项目拍照",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFE65100)
+                        )
+                        state.pendingPhotoItems.forEach { ppi ->
+                            ppi.missingItems.forEach { item ->
+                                Text(
+                                    "• $item",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFBF360C)
+                                )
+                            }
+                        }
+                    }
+                    TextButton(onClick = { viewModel.skipPhotoUpload() }) {
+                        Text("跳过", color = Color(0xFFE65100))
+                    }
+                }
+            }
+        }
+
+        // ===== 上传进度 =====
+        if (state.isUploadingPhotos) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primary
+            )
+            state.photoUploadProgress?.let { progress ->
+                Text(
+                    text = progress,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
         // 表单列表
         LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -178,6 +251,19 @@ private fun InspectionForm(
                     },
                     onRemarkChanged = { remark ->
                         viewModel.onRemarkChanged(index, remark)
+                    },
+                    onTakePhoto = {
+                        val photoDir = File(context.cacheDir, "inspection_photos")
+                        photoDir.mkdirs()
+                        val photoFile = File(photoDir, "photo_${System.currentTimeMillis()}.jpg")
+                        val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            photoFile
+                        )
+                        cameraUri = uri
+                        pendingPhotoIndex = index
+                        cameraLauncher.launch(uri)
                     }
                 )
             }
@@ -191,11 +277,8 @@ private fun InspectionForm(
         ) {
             Button(
                 onClick = { viewModel.submitInspection() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .height(56.dp),
-                enabled = !state.isSubmitting
+                modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
+                enabled = !state.isSubmitting && !state.isUploadingPhotos
             ) {
                 if (state.isSubmitting) {
                     CircularProgressIndicator(
@@ -205,11 +288,16 @@ private fun InspectionForm(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("提交中...")
-                } else {
-                    Text(
-                        text = "提交点检",
-                        style = MaterialTheme.typography.titleMedium
+                } else if (state.isUploadingPhotos) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("正在上传照片...")
+                } else {
+                    Text("提交点检", style = MaterialTheme.typography.titleMedium)
                 }
             }
         }
@@ -218,7 +306,7 @@ private fun InspectionForm(
 
 /**
  * 单条点检项卡片
- * 支持 normal_abnormal（双按钮切换）和 numeric（数值输入）两种类型
+ * 支持 normal_abnormal / numeric 输入 + 拍照功能
  */
 @Composable
 private fun InspectionItemCard(
@@ -226,18 +314,17 @@ private fun InspectionItemCard(
     index: Int,
     onNormalAbnormalChanged: (Boolean) -> Unit,
     onNumericValueChanged: (String) -> Unit,
-    onRemarkChanged: (String) -> Unit
+    onRemarkChanged: (String) -> Unit,
+    onTakePhoto: () -> Unit
 ) {
     val template = itemState.template
     val isValid = itemState.isValid
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(
-                width = if (!isValid) 2.dp else 0.dp,
-                color = if (!isValid) MaterialTheme.colorScheme.error else Color.Transparent
-            ),
+        modifier = Modifier.fillMaxWidth().border(
+            width = if (!isValid) 2.dp else 0.dp,
+            color = if (!isValid) MaterialTheme.colorScheme.error else Color.Transparent
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
@@ -250,10 +337,27 @@ private fun InspectionItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "${index + 1}. ${template.itemName}",
-                    style = MaterialTheme.typography.titleSmall
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${index + 1}. ${template.itemName}",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    // requirePhoto 标记
+                    if (template.requirePhoto) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFE3F2FD)
+                        ) {
+                            Text(
+                                text = "📷 需拍照",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF1565C0)
+                            )
+                        }
+                    }
+                }
                 if (!isValid) {
                     Text(
                         text = "必填",
@@ -263,7 +367,7 @@ private fun InspectionItemCard(
                 }
             }
 
-            // 根据类型渲染不同的输入控件
+            // 根据类型渲染输入控件
             when (template.itemType) {
                 "normal_abnormal" -> {
                     NormalAbnormalInput(
@@ -298,6 +402,79 @@ private fun InspectionItemCard(
                 singleLine = true,
                 isError = itemState.remarkRequired && itemState.remark.isBlank()
             )
+
+            // ===== 照片区域 =====
+            if (template.requirePhoto) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (itemState.selectedNormal == false)
+                            "📷 拍照（异常项必须拍照）"
+                        else
+                            "📷 拍照（可选）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (itemState.selectedNormal == false)
+                            Color(0xFFC62828) else Color(0xFF1565C0)
+                    )
+
+                    if (itemState.photoLocalPath != null) {
+                        // 已拍照 → 显示缩略图 + 重拍按钮
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("已拍照", style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF4CAF50))
+                        }
+                    }
+                }
+
+                // 照片预览
+                if (itemState.photoLocalPath != null) {
+                    AsyncImage(
+                        model = File(itemState.photoLocalPath),
+                        contentDescription = "照片预览",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+
+                // 拍照按钮
+                OutlinedButton(
+                    onClick = onTakePhoto,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !itemState.isPhotoUploading
+                ) {
+                    if (itemState.isPhotoUploading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp), strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("正在上传...")
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.CameraAlt,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (itemState.photoLocalPath != null) "重新拍照" else "拍照")
+                    }
+                }
+            }
         }
     }
 }
@@ -320,8 +497,7 @@ private fun NormalAbnormalInput(
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (selectedNormal == true)
                     MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.surfaceVariant
+                else MaterialTheme.colorScheme.surfaceVariant
             ),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
         ) {
@@ -329,19 +505,16 @@ private fun NormalAbnormalInput(
                 text = "✓ 正常",
                 color = if (selectedNormal == true)
                     MaterialTheme.colorScheme.onPrimary
-                else
-                    MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface
             )
         }
-
         Button(
             onClick = { onSelectionChanged(false) },
             modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (selectedNormal == false)
                     MaterialTheme.colorScheme.error
-                else
-                    MaterialTheme.colorScheme.surfaceVariant
+                else MaterialTheme.colorScheme.surfaceVariant
             ),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
         ) {
@@ -349,8 +522,7 @@ private fun NormalAbnormalInput(
                 text = "✗ 异常",
                 color = if (selectedNormal == false)
                     MaterialTheme.colorScheme.onError
-                else
-                    MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -368,7 +540,6 @@ private fun NumericInput(
     normalMax: Double?,
     isOutOfRange: Boolean = false
 ) {
-    // 判断当前值是否在正常范围内
     val numericValue = value.toDoubleOrNull()
     val isInRange = when {
         value.isBlank() -> null
@@ -379,24 +550,17 @@ private fun NumericInput(
         else -> true
     }
 
-    // 超范围闪烁状态
     var flashCount by remember { mutableStateOf(0) }
     var isFlashing by remember { mutableStateOf(false) }
 
-    // 检测到新超范围时触发闪烁
     LaunchedEffect(isOutOfRange) {
         if (isOutOfRange) {
-            flashCount = 0
-            isFlashing = true
-            repeat(6) {  // 3 次闪烁 = 6 次切换（红/透明）
-                flashCount++
-                delay(150)
-            }
+            flashCount = 0; isFlashing = true
+            repeat(6) { flashCount++; delay(150) }
             isFlashing = false
         }
     }
 
-    // 闪烁中的边框颜色：闪烁时红/透明交替，否则正常显示
     val flashBorderColor = if (isFlashing && flashCount % 2 == 0) {
         Color.Transparent
     } else if (isOutOfRange) {
@@ -409,20 +573,16 @@ private fun NumericInput(
         }
     }
 
-    val textColor = if (isOutOfRange) Color(0xFFF44336) else Color.Unspecified
-
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChanged,
             label = {
                 val rangeText = buildString {
-                    if (normalMin != null && normalMax != null) {
+                    if (normalMin != null && normalMax != null)
                         append("范围: $normalMin ~ $normalMax")
-                    }
                     if (unit != null) {
-                        if (isNotEmpty()) append(" ")
-                        append(unit)
+                        if (isNotEmpty()) append(" "); append(unit)
                     }
                 }
                 Text(rangeText.ifEmpty { "请输入数值" })
@@ -436,7 +596,6 @@ private fun NumericInput(
             } else if (isInRange == false) {
                 { Text("数值超出正常范围", color = Color(0xFFF44336)) }
             } else null,
-            textStyle = LocalTextStyle.current.copy(color = textColor),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = flashBorderColor,
                 unfocusedBorderColor = flashBorderColor
