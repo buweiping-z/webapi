@@ -68,6 +68,9 @@ dependencies {
     // ========== ML Kit 条码识别 ==========
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
+    // ========== 图片加载 ==========
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
     // ========== 网络请求 ==========
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")

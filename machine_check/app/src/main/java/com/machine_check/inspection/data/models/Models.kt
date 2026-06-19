@@ -12,7 +12,8 @@ data class InspectionTemplate(
     val normalMin: Double?,
     val normalMax: Double?,
     val sortOrder: Int,
-    val frequency: String = "日"    // 点检频率: 日/周/月
+    val frequency: String = "日",   // 点检频率: 日/周/月
+    val requirePhoto: Boolean = false  // 该检查项是否需要拍照
 )
 
 /**
@@ -104,5 +105,80 @@ data class UninspectedMonthlyResponse(
     val totalDevices: Int,
     val uninspectedCount: Int,
     val uninspectedDevices: List<UninspectedMonthlyDevice>
+)
+
+// ==================== 照片功能相关模型 ====================
+
+/**
+ * records/save 请求体中的单条记录
+ */
+data class SaveRecordItem(
+    val day: Int,
+    val itemName: String,
+    val resultValue: String,
+    val remark: String
+)
+
+/**
+ * records/save 请求体
+ */
+data class SaveDailyRecordRequest(
+    val employeeId: String,
+    val deviceModel: String,
+    val inspectionMonth: String,    // "2026-06-19"
+    val results: List<SaveRecordItem>
+)
+
+/**
+ * records/save 端点响应（含照片状态）
+ */
+data class SaveRecordResponse(
+    val success: Boolean,
+    val message: String,
+    val recordIds: List<Int> = emptyList(),
+    val pendingPhotoItems: List<PendingPhotoItem> = emptyList()
+)
+
+/**
+ * 缺照片的检查项
+ */
+data class PendingPhotoItem(
+    val recordId: Int,
+    val day: Int,
+    val missingItems: List<String>
+)
+
+/**
+ * 照片上传响应
+ */
+data class PhotoUploadResponse(
+    val success: Boolean,
+    val photoId: Int = 0,
+    val photoPath: String = "",
+    val thumbnailPath: String = ""
+)
+
+/**
+ * 月度照片列表中的单条照片
+ */
+data class MonthlyPhoto(
+    val id: Int,
+    val recordId: Int,
+    val itemName: String,
+    val photoPath: String,
+    val thumbnailPath: String,
+    val photoOrder: Int,
+    val uploadedBy: String,
+    val createdAt: String
+)
+
+/**
+ * 单个点检项的照片状态（UI 层使用）
+ */
+data class PhotoItemState(
+    val localFilePath: String? = null,      // 本地拍摄的照片路径（待上传）
+    val uploadedPhotoIds: List<Int> = emptyList(),  // 已上传的照片 ID
+    val isUploading: Boolean = false,       // 是否正在上传
+    val uploadError: String? = null         // 上传失败错误信息
 )
 
