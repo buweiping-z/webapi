@@ -2734,20 +2734,10 @@
 
             // 直接克隆 table 节点，避免正则剥离 wrapper div 时因浏览器 HTML 序列化差异
             // 导致结构错乱、底部备注行被挤出渲染区域（Bug 12 残留）
-            // 克隆表格并构建 PDF 渲染容器（DOM 元素，非 HTML 字符串）
-            // 用 position:fixed left:0 top:0 固定定位，避免 html2pdf 内部临时容器
-            // 受浏览器缩放导致的视口宽度变化而偏移
             const tableClone = table.cloneNode(true);
             const tableOnly = tableClone.outerHTML;
-            const container = document.createElement('div');
-            // position:absolute 远距离左移 — html2canvas 不识别 fixed 元素
-            // 的视口坐标系，浏览器缩放时坐标错位导致 PDF 内容偏移
-            container.style.cssText =
-                'position:absolute;left:-99999px;top:0;' +
-                'isolation:isolate;font-family:"Microsoft YaHei",Arial,sans-serif;' +
-                'padding:10px 15px 20px 15px;background:#fff;width:' + capW + 'px;' +
-                'color:#333;line-height:1.5;overflow:hidden;';
-            container.innerHTML = `
+            const html = `
+            <div style="isolation:isolate;font-family:'Microsoft YaHei',Arial,sans-serif;padding:10px 15px 20px 15px;background:#fff;width:${capW}px;color:#333;line-height:1.5;overflow:hidden;">
                 <!-- 标题行：附表一矩形框（左） + 设备治工具点检表标题（居中） -->
                 <div style="display:flex;align-items:center;margin:0 0 10px 0;">
                     <div style="border:2.5px solid #333;padding:6px 14px;font-size:16px;font-weight:bold;flex-shrink:0;letter-spacing:2px;">附表一</div>
@@ -2778,27 +2768,24 @@
                 <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end;font-size:16px;color:#555;flex-wrap:nowrap;">
                     <span style="text-align:center;flex:1;white-space:nowrap;">备注：正常标记为 "○"，异常标记为 "×"，未点检标记为 "/"</span>
                     <span style="text-align:right;font-weight:bold;flex-shrink:0;margin-left:20px;">SM-T1-03</span>
-                </div>`;
-            document.body.appendChild(container);
+                </div>
+            </div>`;
 
-            // 补偿浏览器缩放：devicePixelRatio 随 Ctrl+/- 缩放变化，反比调整 scale
-            const dpr = window.devicePixelRatio || 1;
-            const pdfScale = dpr >= 1 ? 1.5 : 1.5 / dpr;
-
+            // scale: 1 锁死，不用 window.devicePixelRatio（浏览器缩放会改变 dpr）
+            // windowWidth = capW 强制 html2canvas 渲染窗口固定，canvas 尺寸恒定
+            // 无论用户怎么 Ctrl+/-，输出图片尺寸不变，PDF 居中公式永不出错
             try {
                 await html2pdf().set({
                     margin:       [8, 6, 8, 6],
                     filename:     `点检表_${deviceName}_${currentYear}年${currentMonth}月.pdf`,
                     image:        { type: 'jpeg', quality: 0.92 },
-                    html2canvas:  { scale: pdfScale, width: capW, windowWidth: capW, x: 0, y: 0, scrollX: 0, scrollY: 0 },
+                    html2canvas:  { scale: 1, width: capW, windowWidth: capW },
                     jsPDF:        { unit: 'mm', format: 'a3', orientation: 'landscape' }
-                }).from(container).save();
+                }).from(html).save();
             } catch (pdfError) {
                 console.error('PDF 生成失败:', pdfError);
                 throw pdfError;
             } finally {
-                // 移除自定义容器 + 清理 html2pdf 残留临时元素
-                document.body.removeChild(container);
                 setTimeout(() => {
                     document.querySelectorAll('[id^="html2pdf"]').forEach(el => el.remove());
                 }, 200);
