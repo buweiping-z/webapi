@@ -2740,8 +2740,10 @@
             const tableClone = table.cloneNode(true);
             const tableOnly = tableClone.outerHTML;
             const container = document.createElement('div');
+            // position:absolute 远距离左移 — html2canvas 不识别 fixed 元素
+            // 的视口坐标系，浏览器缩放时坐标错位导致 PDF 内容偏移
             container.style.cssText =
-                'position:fixed;left:0;top:0;z-index:99999;' +
+                'position:absolute;left:-99999px;top:0;' +
                 'isolation:isolate;font-family:"Microsoft YaHei",Arial,sans-serif;' +
                 'padding:10px 15px 20px 15px;background:#fff;width:' + capW + 'px;' +
                 'color:#333;line-height:1.5;overflow:hidden;';
@@ -2788,7 +2790,7 @@
                     margin:       [8, 6, 8, 6],
                     filename:     `点检表_${deviceName}_${currentYear}年${currentMonth}月.pdf`,
                     image:        { type: 'jpeg', quality: 0.92 },
-                    html2canvas:  { scale: pdfScale, width: capW, windowWidth: capW },
+                    html2canvas:  { scale: pdfScale, width: capW, windowWidth: capW, x: 0, y: 0, scrollX: 0, scrollY: 0 },
                     jsPDF:        { unit: 'mm', format: 'a3', orientation: 'landscape' }
                 }).from(container).save();
             } catch (pdfError) {
