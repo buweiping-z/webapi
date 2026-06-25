@@ -2734,10 +2734,18 @@
 
             // 直接克隆 table 节点，避免正则剥离 wrapper div 时因浏览器 HTML 序列化差异
             // 导致结构错乱、底部备注行被挤出渲染区域（Bug 12 残留）
+            // 克隆表格并构建 PDF 渲染容器（DOM 元素，非 HTML 字符串）
+            // 用 position:fixed left:0 top:0 固定定位，避免 html2pdf 内部临时容器
+            // 受浏览器缩放导致的视口宽度变化而偏移
             const tableClone = table.cloneNode(true);
             const tableOnly = tableClone.outerHTML;
-            const html = `
-            <div style="isolation:isolate;font-family:'Microsoft YaHei',Arial,sans-serif;padding:10px 15px 20px 15px;background:#fff;width:${capW}px;color:#333;line-height:1.5;overflow:hidden;">
+            const container = document.createElement('div');
+            container.style.cssText =
+                'position:fixed;left:0;top:0;z-index:99999;' +
+                'isolation:isolate;font-family:"Microsoft YaHei",Arial,sans-serif;' +
+                'padding:10px 15px 20px 15px;background:#fff;width:' + capW + 'px;' +
+                'color:#333;line-height:1.5;overflow:hidden;';
+            container.innerHTML = `
                 <!-- 标题行：附表一矩形框（左） + 设备治工具点检表标题（居中） -->
                 <div style="display:flex;align-items:center;margin:0 0 10px 0;">
                     <div style="border:2.5px solid #333;padding:6px 14px;font-size:16px;font-weight:bold;flex-shrink:0;letter-spacing:2px;">附表一</div>
@@ -2768,11 +2776,10 @@
                 <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end;font-size:16px;color:#555;flex-wrap:nowrap;">
                     <span style="text-align:center;flex:1;white-space:nowrap;">备注：正常标记为 "○"，异常标记为 "×"，未点检标记为 "/"</span>
                     <span style="text-align:right;font-weight:bold;flex-shrink:0;margin-left:20px;">SM-T1-03</span>
-                </div>
-            </div>`;
+                </div>`;
+            document.body.appendChild(container);
 
             // 补偿浏览器缩放：devicePixelRatio 随 Ctrl+/- 缩放变化，反比调整 scale
-            // 使 html2canvas 输出分辨率在不同缩放级别下保持一致
             const dpr = window.devicePixelRatio || 1;
             const pdfScale = dpr >= 1 ? 1.5 : 1.5 / dpr;
 
@@ -2783,12 +2790,13 @@
                     image:        { type: 'jpeg', quality: 0.92 },
                     html2canvas:  { scale: pdfScale, width: capW, windowWidth: capW },
                     jsPDF:        { unit: 'mm', format: 'a3', orientation: 'landscape' }
-                }).from(html).save();
+                }).from(container).save();
             } catch (pdfError) {
                 console.error('PDF 生成失败:', pdfError);
-                throw pdfError; // 重新抛出，让 batchExportAll 的逐设备 catch 处理
+                throw pdfError;
             } finally {
-                // 清理 html2pdf 可能残留的临时 DOM 元素（连续批量导出时尤其重要）
+                // 移除自定义容器 + 清理 html2pdf 残留临时元素
+                document.body.removeChild(container);
                 setTimeout(() => {
                     document.querySelectorAll('[id^="html2pdf"]').forEach(el => el.remove());
                 }, 200);
