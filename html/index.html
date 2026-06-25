@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -2694,9 +2694,11 @@
             const rawName = (selText && selText.includes(currentDevice)) ? selText : currentDevice;
             const deviceName = rawName.replace(/\s*\(.*?\)\s*/g, '').trim();
 
-            // 表格真实宽度
-            const tableW = table.scrollWidth;
-            const capW = Math.max(tableW + 40, 1200);
+            // 从列结构估算表格宽度，避免浏览器缩放导致 scrollWidth 失真
+            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+            const fixedColsW = 60 + 200 + 60 + 50;  // 编号+项目+内容+周期 min-width
+            const estimatedTableW = fixedColsW + daysInMonth * 55;
+            const capW = Math.min(Math.max(estimatedTableW + 40, 1200), 3500);
 
             // CSS 电子印章（纯样式，无图片，无 canvas 污染）
             function sealHTML(name, signed) {
@@ -2720,22 +2722,22 @@
                 return `
                 <div style="display:inline-flex;align-items:center;justify-content:center;
                     width:60px;height:60px;border:3px solid ${c};border-radius:50%;
-                    position:relative;background:${bg};box-shadow:${shadow};vertical-align:top;">
-                    <span style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;
-                        border:1px dashed ${dash};border-radius:50%;"></span>
-                    <span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-                        font-size:18px;color:${star};">★</span>
-                    <span style="position:relative;z-index:1;display:inline-flex;align-items:center;
-                        justify-content:center;line-height:1.2;">${inner}</span>
+                    position:relative;background:${bg};box-shadow:${shadow};vertical-align:top;isolation:isolate;">
+                    <span style="position:absolute;z-index:0;top:4px;left:4px;right:4px;bottom:4px;
+                        border:1px dashed ${dash};border-radius:50%;pointer-events:none;"></span>
+                    <span style="position:absolute;z-index:0;display:flex;align-items:center;justify-content:center;
+                        top:0;left:0;right:0;bottom:0;font-size:18px;color:${star};pointer-events:none;">★</span>
+                    <span style="position:relative;z-index:2;display:inline-flex;align-items:center;
+                        justify-content:center;line-height:1.2;overflow:visible;">${inner}</span>
                 </div>`;
             }
 
-            // 去掉 tableContainer 的 overflow-x wrapper，避免 PDF 中溢出裁切
-            const tableOnly = tableContainer.innerHTML
-                .replace(/<div style="overflow-x:\s*auto;?"\s*>/i, '')
-                .replace(/<\/div>\s*$/i, '');
+            // 直接克隆 table 节点，避免正则剥离 wrapper div 时因浏览器 HTML 序列化差异
+            // 导致结构错乱、底部备注行被挤出渲染区域（Bug 12 残留）
+            const tableClone = table.cloneNode(true);
+            const tableOnly = tableClone.outerHTML;
             const html = `
-            <div style="font-family:'Microsoft YaHei',Arial,sans-serif;padding:10px 15px 20px 15px;background:#fff;width:${capW}px;overflow:hidden;">
+            <div style="isolation:isolate;font-family:'Microsoft YaHei',Arial,sans-serif;padding:10px 15px 20px 15px;background:#fff;width:${capW}px;color:#333;line-height:1.5;">
                 <!-- 标题行：附表一矩形框（左） + 设备治工具点检表标题（居中） -->
                 <div style="display:flex;align-items:center;margin:0 0 10px 0;">
                     <div style="border:2.5px solid #333;padding:6px 14px;font-size:16px;font-weight:bold;flex-shrink:0;letter-spacing:2px;">附表一</div>
@@ -2769,13 +2771,23 @@
                 </div>
             </div>`;
 
-            await html2pdf().set({
-                margin:       [8, 6, 8, 6],
-                filename:     `点检表_${deviceName}_${currentYear}年${currentMonth}月.pdf`,
-                image:        { type: 'jpeg', quality: 0.92 },
-                html2canvas:  { scale: 1.5, width: capW, windowWidth: capW },
-                jsPDF:        { unit: 'mm', format: 'a3', orientation: 'landscape' }
-            }).from(html).save();
+            try {
+                await html2pdf().set({
+                    margin:       [8, 6, 8, 6],
+                    filename:     `点检表_${deviceName}_${currentYear}年${currentMonth}月.pdf`,
+                    image:        { type: 'jpeg', quality: 0.92 },
+                    html2canvas:  { scale: 1.5, width: capW, windowWidth: capW },
+                    jsPDF:        { unit: 'mm', format: 'a3', orientation: 'landscape' }
+                }).from(html).save();
+
+                // 清理 html2pdf 可能残留的临时 DOM 元素（连续批量导出时尤其重要）
+                setTimeout(() => {
+                    document.querySelectorAll('[id^="html2pdf"]').forEach(el => el.remove());
+                }, 200);
+            } catch (pdfError) {
+                console.error('PDF 生成失败:', pdfError);
+                throw pdfError; // 重新抛出，让 batchExportAll 的逐设备 catch 处理
+            }
         }
 
         // ==================== 一键导出：当月所有设备合并为一个 PDF ====================
@@ -2826,42 +2838,51 @@
                 }
 
                 // 2. 逐台导出 — 复用页面渲染和 exportPDF 逻辑
-                let done = 0;
                 const savedDevice = currentDevice;
                 const savedTemplates = templatesData;
                 const savedRecords = recordsData;
                 const savedSignatures = { ...signatures };
 
-                for (const dev of devices) {
-                    btn.textContent = `导出中 ${done+1}/${devices.length}`;
+                const successList = [];
+                const failList = [];
 
-                    // 设置当前设备上下文
-                    currentDevice = dev;
-                    currentYear = year;
-                    currentMonth = month;
-                    const [templates, records, sigRes] = await Promise.all([
-                        loadTemplates(dev),
-                        loadRecords(dev, year, month),
-                        axios.get(`${API_BASE_URL}/api/Inspection/signatures/get`, { params: { deviceModel: dev, year, month } })
-                    ]);
-                    templatesData = templates;
-                    recordsData = records;
-                    signatures = {
-                        approver: sigRes.data.approver || '',
-                        confirmer: sigRes.data.confirmer || '',
-                        operatorName: sigRes.data.operatorName || ''
-                    };
-                    await renderReadOnlyTable();
+                for (let i = 0; i < devices.length; i++) {
+                    const dev = devices[i];
+                    btn.textContent = `导出中 ${i+1}/${devices.length}`;
 
-                    // 等 DOM 更新后调用现有的导出逻辑
-                    await new Promise(r => setTimeout(r, 300));
-                    await exportPDF();
-                    await new Promise(r => setTimeout(r, 300));
+                    try {
+                        // 设置当前设备上下文
+                        currentDevice = dev;
+                        currentYear = year;
+                        currentMonth = month;
+                        const [templates, records, sigRes] = await Promise.all([
+                            loadTemplates(dev),
+                            loadRecords(dev, year, month),
+                            axios.get(`${API_BASE_URL}/api/Inspection/signatures/get`, { params: { deviceModel: dev, year, month } })
+                        ]);
+                        templatesData = templates;
+                        recordsData = records;
+                        signatures = {
+                            approver: sigRes.data.approver || '',
+                            confirmer: sigRes.data.confirmer || '',
+                            operatorName: sigRes.data.operatorName || ''
+                        };
+                        await renderReadOnlyTable();
 
-                    done++;
+                        // 等 DOM 布局完成 + 上一次导出残留清理后再调用导出
+                        await new Promise(r => setTimeout(r, 500));
+                        await exportPDF();
+                        await new Promise(r => setTimeout(r, 500));
+
+                        successList.push(dev);
+                    } catch (devError) {
+                        console.error(`设备 ${dev} 导出失败:`, devError);
+                        failList.push({ dev, error: devError.message || devError });
+                        // 单个设备失败不中止，继续导出下一台
+                    }
                 }
 
-                // 恢复之前的设备上下文
+                // 恢复之前的设备上下文（无论成功失败都要恢复）
                 currentDevice = savedDevice;
                 templatesData = savedTemplates;
                 recordsData = savedRecords;
@@ -2871,9 +2892,19 @@
 
                 btn.disabled = false;
                 btn.textContent = '一键导出';
-                showStatus(`一键导出完成：${year}年${month}月 共 ${devices.length} 台设备`);
+
+                // 汇总报告
+                const total = devices.length;
+                if (failList.length === 0) {
+                    showStatus(`一键导出完成：${year}年${month}月 共 ${total} 台设备`);
+                } else if (successList.length === 0) {
+                    alert(`导出全部失败（${total} 台）：\n${failList.map(f => `${f.dev}：${f.error}`).join('\n')}`);
+                } else {
+                    showStatus(`导出完成：成功 ${successList.length}/${total} 台，失败 ${failList.length} 台`);
+                    alert(`部分设备导出失败：\n${failList.map(f => `${f.dev}：${f.error}`).join('\n')}\n\n已成功导出的设备：${successList.join('、')}`);
+                }
             } catch (e) {
-                console.error(e);
+                console.error('批量导出前置检查失败:', e);
                 btn.disabled = false;
                 btn.textContent = '一键导出';
                 alert('导出失败：' + (e.response?.data?.error || e.message));
