@@ -1653,8 +1653,10 @@
          ============================================================ -->
     <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"
         onerror="loadFallback('axios','./axios.min.js')"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"
-        onerror="loadFallback('html2pdf','./html2pdf.bundle.min.js')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
+        onerror="loadFallback('html2canvas','./html2canvas.min.js')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"
+        onerror="loadFallback('jspdf','./jspdf.umd.min.js')"></script>
     <script>
     (function(){window.loadFallback=function(n,p){console.warn('[CDN] '+n+' 本地降级');var s=document.createElement('script');s.src=p;s.onerror=function(){var e=document.getElementById('errorBar');if(e){e.style.display='block';e.textContent='⚠️ '+n+' 加载失败'}};document.head.appendChild(s);};})();
     </script>
@@ -2771,24 +2773,41 @@
                 </div>
             </div>`;
 
-            // scale: 1 锁死，不用 window.devicePixelRatio（浏览器缩放会改变 dpr）
-            // windowWidth = capW 强制 html2canvas 渲染窗口固定，canvas 尺寸恒定
-            // 无论用户怎么 Ctrl+/-，输出图片尺寸不变，PDF 居中公式永不出错
+            // 用独立 html2canvas + jsPDF 替代 html2pdf，完全控制渲染管线
+            // scale: 1 硬编码 — 不用 devicePixelRatio，canvas 尺寸恒定
+            // windowWidth: capW — 虚拟视口固定，不受浏览器 Ctrl+/- 缩放影响
+            const container = document.createElement('div');
+            container.style.cssText =
+                'position:absolute;left:-99999px;top:0;' +
+                'width:' + capW + 'px;';
+            container.innerHTML = html;
+            document.body.appendChild(container);
+
             try {
-                await html2pdf().set({
-                    margin:       [8, 6, 8, 6],
-                    filename:     `点检表_${deviceName}_${currentYear}年${currentMonth}月.pdf`,
-                    image:        { type: 'jpeg', quality: 0.92 },
-                    html2canvas:  { scale: 1, width: capW, windowWidth: capW },
-                    jsPDF:        { unit: 'mm', format: 'a3', orientation: 'landscape' }
-                }).from(html).save();
+                const canvas = await html2canvas(container, {
+                    scale: 1,
+                    width: capW,
+                    windowWidth: capW,
+                    useCORS: true,
+                    logging: false
+                });
+
+                const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+                const pdf = new JsPDF({ unit: 'mm', format: 'a3', orientation: 'landscape' });
+                const pageW = pdf.internal.pageSize.getWidth();
+                const pageH = pdf.internal.pageSize.getHeight();
+                const ml = 6, mt = 8, mr = 6, mb = 8;
+                const imgW = pageW - ml - mr;
+                const imgH = (canvas.height * imgW) / canvas.width;
+                const imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+                pdf.addImage(imgData, 'JPEG', ml, mt, imgW, imgH);
+                pdf.save(`点检表_${deviceName}_${currentYear}年${currentMonth}月.pdf`);
             } catch (pdfError) {
                 console.error('PDF 生成失败:', pdfError);
                 throw pdfError;
             } finally {
-                setTimeout(() => {
-                    document.querySelectorAll('[id^="html2pdf"]').forEach(el => el.remove());
-                }, 200);
+                document.body.removeChild(container);
             }
         }
 
