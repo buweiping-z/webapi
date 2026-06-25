@@ -48,6 +48,20 @@ const capW = Math.min(Math.max(estimatedTableW + 40, 1200), 3500);
 | 下限 | 1200px | 保持原有逻辑 |
 | 上限 | 3500px | 防止极端情况超出 A3 横向 |
 
+## html2canvas scale 安全性确认
+
+`capW` 传给 html2canvas 的方式：
+
+```javascript
+html2canvas: { scale: 1.5, width: capW, windowWidth: capW }
+```
+
+`scale: 1.5` 已显式锁定，html2canvas 文档明确：显式设置 `scale` 后不再读取 `window.devicePixelRatio`。浏览器缩放不会影响 canvas 输出分辨率，修复宽度后不会出现垂直拉长或图片模糊的副作用。
+
+## 顺带清理
+
+原代码中 `table.getBoundingClientRect()` 取值后未赋值，是一个无意义的强制重排操作。新方案整体替换该代码块，此行一并移除。
+
 ## 边界验证
 
 - 2 月（28 天）：370 + 1540 + 40 = 1950 → capW = 1950
